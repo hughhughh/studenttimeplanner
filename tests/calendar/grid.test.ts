@@ -4,22 +4,26 @@ import {
   blockPosition,
   bodyHeight,
   MIN_BLOCK_PX,
+  PX_PER_MIN,
+  clampStartMinutes,
+  minutesToTimeOfDay,
+  snapMinutes,
 } from "@/lib/calendar/grid";
 import { at, TZ } from "@/tests/fixtures/items";
 
 describe("grid layout", () => {
   it("computes body height from working hours", () => {
-    // 6am–10pm = 16 hours × 60px
-    expect(bodyHeight(6, 22)).toBe(16 * 60);
+    // 6am–10pm = 16 hours × 60min × px/min
+    expect(bodyHeight(6, 22)).toBe(16 * 60 * PX_PER_MIN);
   });
 
   it("positions a 1-hour block at 9am within 6–22 window", () => {
     const start = at("2026-07-22", "09:00");
     const end = at("2026-07-22", "10:00");
     const { top, height } = blockPosition(start, end, TZ, 6, 22);
-    // 9:00 is 3 hours after 6:00 → 180 minutes → top 180
-    expect(top).toBe(180);
-    expect(height).toBe(60);
+    // 9:00 is 3 hours after 6:00 → 180 minutes
+    expect(top).toBe(180 * PX_PER_MIN);
+    expect(height).toBe(60 * PX_PER_MIN);
   });
 
   it("enforces a minimum block height for very short events", () => {
@@ -40,5 +44,22 @@ describe("grid layout", () => {
     // c starts when a ends → can reuse lane 0
     expect(placed[2].lane).toBe(0);
     expect(placed[0].lanes).toBe(2);
+  });
+
+  it("snaps minutes to 15-minute steps", () => {
+    expect(snapMinutes(7)).toBe(0);
+    expect(snapMinutes(8)).toBe(15);
+    expect(snapMinutes(22)).toBe(15);
+    expect(snapMinutes(23)).toBe(30);
+  });
+
+  it("formats minutes since midnight as HH:mm", () => {
+    expect(minutesToTimeOfDay(0)).toBe("00:00");
+    expect(minutesToTimeOfDay(19 * 60 + 45)).toBe("19:45");
+  });
+
+  it("clamps a dragged start inside working hours", () => {
+    expect(clampStartMinutes(5 * 60, 60, 6, 22)).toBe(6 * 60);
+    expect(clampStartMinutes(22 * 60, 60, 6, 22)).toBe(21 * 60);
   });
 });

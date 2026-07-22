@@ -9,7 +9,7 @@ import {
 
 const INITIAL: LoginState = { step: "email", email: "" };
 
-export default function LoginForm({ showDemo }: { showDemo: boolean }) {
+export default function LoginForm() {
   const [state, action, pending] = useActionState(loginAction, INITIAL);
 
   return (
@@ -78,16 +78,20 @@ export default function LoginForm({ showDemo }: { showDemo: boolean }) {
         {state.error && <p className="text-sm text-overdue">{state.error}</p>}
       </form>
 
-      {showDemo && (
-        <form action={demoLoginAction} className="mt-4">
-          <button
-            type="submit"
-            className="w-full rounded-lg border border-border px-4 py-2.5 text-sm font-medium hover:bg-black/5"
-          >
-            Continue as demo
-          </button>
-        </form>
-      )}
+      <div className="mt-4 flex items-center gap-3 text-xs text-muted">
+        <span className="h-px flex-1 bg-border" />
+        or
+        <span className="h-px flex-1 bg-border" />
+      </div>
+
+      <form action={demoLoginAction} className="mt-4">
+        <button
+          type="submit"
+          className="w-full rounded-lg border border-border px-4 py-2.5 text-sm font-medium hover:bg-black/5"
+        >
+          Continue as guest
+        </button>
+      </form>
     </div>
   );
 }

@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { getOptionalUserId } from "@/lib/auth/dal";
-import { resendConfigured } from "@/lib/auth/email";
 import LoginForm from "@/app/login/LoginForm";
 
 export const dynamic = "force-dynamic";
@@ -25,7 +24,7 @@ export default async function LoginPage() {
         </p>
       </div>
       <div className="mt-8 flex w-full justify-center">
-        <LoginForm showDemo={!resendConfigured()} />
+        <LoginForm />
       </div>
     </div>
   );

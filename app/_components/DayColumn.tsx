@@ -1,5 +1,6 @@
 "use client";
 
+import type { PointerEvent as ReactPointerEvent } from "react";
 import type { Occurrence } from "@/lib/types";
 import {
   assignLanes,
@@ -11,6 +12,7 @@ import ItemCard from "@/app/_components/ItemCard";
 import NowIndicator from "@/app/_components/NowIndicator";
 
 interface Props {
+  date: string;
   occurrences: Occurrence[];
   tz: string;
   startHour: number;
@@ -18,13 +20,19 @@ interface Props {
   isToday: boolean;
   isPast: boolean;
   busyKeys: Set<string>;
+  draggingKey: string | null;
   onOpen: (occ: Occurrence) => void;
   onToggleComplete: (occ: Occurrence) => void;
   onDelete: (occ: Occurrence) => void;
-  onReschedule: (occ: Occurrence) => void;
+  onDragStart: (
+    occ: Occurrence,
+    date: string,
+    e: ReactPointerEvent<HTMLDivElement>
+  ) => void;
 }
 
 export default function DayColumn({
+  date,
   occurrences,
   tz,
   startHour,
@@ -32,10 +40,11 @@ export default function DayColumn({
   isToday,
   isPast,
   busyKeys,
+  draggingKey,
   onOpen,
   onToggleComplete,
   onDelete,
-  onReschedule,
+  onDragStart,
 }: Props) {
   const height = bodyHeight(startHour, endHour);
   const placements = assignLanes(occurrences);
@@ -46,6 +55,7 @@ export default function DayColumn({
 
   return (
     <div
+      data-day-date={date}
       className={`relative border-l border-border ${
         isPast ? "bg-surface-muted/40" : isToday ? "bg-accent-soft/30" : ""
       }`}
@@ -54,7 +64,7 @@ export default function DayColumn({
       {hours.map((h) => (
         <div
           key={h}
-          className="absolute inset-x-0 border-t border-border/60"
+          className="pointer-events-none absolute inset-x-0 border-t border-border/60"
           style={{ top: (h - startHour) * 60 * PX_PER_MIN }}
         />
       ))}
@@ -81,10 +91,11 @@ export default function DayColumn({
             lane={lane}
             lanes={lanes}
             busy={busyKeys.has(occ.key)}
+            dragging={draggingKey === occ.key}
             onOpen={onOpen}
             onToggleComplete={onToggleComplete}
             onDelete={onDelete}
-            onReschedule={onReschedule}
+            onDragStart={(item, e) => onDragStart(item, date, e)}
           />
         );
       })}

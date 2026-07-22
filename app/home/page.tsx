@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { demoLoginAction } from "@/app/actions/auth";
 
 export const metadata = {
   title: "Student Time Planner — your week, planned",
@@ -34,7 +35,7 @@ export default function HomePage() {
             Project folio
           </Link>
           <Link
-            href="/"
+            href="/login"
             className="rounded-full bg-accent px-4 py-2 text-sm font-semibold text-white transition hover:bg-accent-strong"
           >
             Open planner
@@ -57,17 +58,19 @@ export default function HomePage() {
         </p>
         <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
           <Link
-            href="/"
+            href="/login"
             className="rounded-full bg-accent px-6 py-3 text-sm font-semibold text-white transition hover:bg-accent-strong"
           >
             Open my planner
           </Link>
-          <Link
-            href="/"
-            className="rounded-full border border-border px-6 py-3 text-sm font-semibold transition hover:bg-black/5"
-          >
-            See the week view
-          </Link>
+          <form action={demoLoginAction}>
+            <button
+              type="submit"
+              className="rounded-full border border-border px-6 py-3 text-sm font-semibold transition hover:bg-black/5"
+            >
+              Continue as guest
+            </button>
+          </form>
         </div>
 
         <div className="mt-16 grid w-full gap-4 text-left sm:grid-cols-3">

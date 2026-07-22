@@ -1,11 +1,22 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
+import { DateTime } from "luxon";
 import type { Occurrence } from "@/lib/types";
-import { PX_PER_MIN, bodyHeight } from "@/lib/calendar/grid";
+import {
+  PX_PER_MIN,
+  SNAP_MINUTES,
+  bodyHeight,
+  clampStartMinutes,
+  minutesToTimeOfDay,
+  snapMinutes,
+  yToDayMinutes,
+} from "@/lib/calendar/grid";
+import { minutesIntoDay } from "@/lib/calendar/time";
 import {
   deleteOccurrence,
+  editOccurrence,
   toggleComplete,
 } from "@/lib/actions/items";
 import { logoutAction } from "@/app/actions/auth";
@@ -37,10 +48,69 @@ interface Props {
   dbMessage?: string;
 }
 
+interface DragState {
+  occ: Occurrence;
+  /** Day the item started on (needed for recurring overrides). */
+  originDate: string;
+  durationMin: number;
+  grabOffsetMin: number;
+  date: string;
+  startMin: number;
+  moved: boolean;
+  pointerId: number;
+}
+
+interface OptimisticMove {
+  date: string;
+  start: string;
+  end: string;
+}
+
 const GRID_TEMPLATE =
   "repeat(5, minmax(0,1fr)) 14px repeat(2, minmax(0,1fr))";
 const GUTTER = 52;
 const STORAGE_KEY = "studenttimeplanner.workingHours";
+const DRAG_THRESHOLD_PX = 4;
+
+function patchOccurrence(
+  occ: Occurrence,
+  patch: { date: string; start: string; end: string }
+): Occurrence {
+  return { ...occ, date: patch.date, start: patch.start, end: patch.end };
+}
+
+function moveFromDrag(
+  drag: Pick<DragState, "date" | "startMin" | "durationMin">,
+  tz: string
+): OptimisticMove {
+  const start = DateTime.fromFormat(
+    `${drag.date} ${minutesToTimeOfDay(drag.startMin)}`,
+    "yyyy-MM-dd HH:mm",
+    { zone: tz }
+  );
+  const end = start.plus({ minutes: drag.durationMin });
+  return {
+    date: drag.date,
+    start: start.toISO() ?? "",
+    end: end.toISO() ?? "",
+  };
+}
+
+function applyLocalMoves(
+  occurrences: Occurrence[],
+  optimistic: Record<string, OptimisticMove>,
+  drag: DragState | null,
+  tz: string
+): Occurrence[] {
+  return occurrences.map((occ) => {
+    if (drag && occ.key === drag.occ.key) {
+      return patchOccurrence(occ, moveFromDrag(drag, tz));
+    }
+    const pending = optimistic[occ.key];
+    if (pending) return patchOccurrence(occ, pending);
+    return occ;
+  });
+}
 
 export default function WeekView({
   days,
@@ -58,6 +128,12 @@ export default function WeekView({
   const [draft, setDraft] = useState<TimetableDraft | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [busyKeys, setBusyKeys] = useState<Set<string>>(new Set());
+  const [optimistic, setOptimistic] = useState<Record<string, OptimisticMove>>(
+    {}
+  );
+  const [drag, setDrag] = useState<DragState | null>(null);
+  const dragRef = useRef<DragState | null>(null);
+  const suppressClickRef = useRef(false);
   const [, startTransition] = useTransition();
 
   useEffect(() => {
@@ -71,6 +147,34 @@ export default function WeekView({
     }
   }, []);
 
+  useEffect(() => {
+    dragRef.current = drag;
+  }, [drag]);
+
+  // Drop optimistic patches once the server-rendered week matches them.
+  useEffect(() => {
+    setOptimistic((prev) => {
+      const keys = Object.keys(prev);
+      if (keys.length === 0) return prev;
+      let changed = false;
+      const next = { ...prev };
+      for (const key of keys) {
+        const move = prev[key];
+        const server = occurrences.find((o) => o.key === key);
+        if (
+          server &&
+          server.date === move.date &&
+          minutesIntoDay(server.start, tz) === minutesIntoDay(move.start, tz) &&
+          minutesIntoDay(server.end, tz) === minutesIntoDay(move.end, tz)
+        ) {
+          delete next[key];
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [occurrences, tz]);
+
   const updateHours = (next: { startHour: number; endHour: number }) => {
     if (next.endHour <= next.startHour) return;
     setHours(next);
@@ -81,15 +185,20 @@ export default function WeekView({
     }
   };
 
+  const displayOccurrences = useMemo(
+    () => applyLocalMoves(occurrences, optimistic, drag, tz),
+    [occurrences, optimistic, drag, tz]
+  );
+
   const byDate = useMemo(() => {
     const map = new Map<string, Occurrence[]>();
-    for (const occ of occurrences) {
+    for (const occ of displayOccurrences) {
       const list = map.get(occ.date) ?? [];
       list.push(occ);
       map.set(occ.date, list);
     }
     return map;
-  }, [occurrences]);
+  }, [displayOccurrences]);
 
   const withBusy = (key: string, fn: () => Promise<void>) => {
     setBusyKeys((prev) => new Set(prev).add(key));
@@ -121,6 +230,154 @@ export default function WeekView({
         recurring: occ.recurring,
       })
     );
+
+  const commitDrag = (state: DragState) => {
+    const originStart = minutesIntoDay(state.occ.start, tz);
+    const originEnd = minutesIntoDay(state.occ.end, tz);
+    const sameSlot =
+      state.date === state.originDate &&
+      state.startMin === originStart &&
+      state.startMin + state.durationMin === originEnd;
+    if (sameSlot) return;
+
+    const move = moveFromDrag(state, tz);
+    if (!move.start || !move.end) return;
+
+    // Recurring series: only time overrides on the original day (not cross-day).
+    const targetDate = state.occ.recurring ? state.originDate : state.date;
+    const timeStart = minutesToTimeOfDay(state.startMin);
+    const timeEnd = minutesToTimeOfDay(state.startMin + state.durationMin);
+
+    // Keep the card where it was dropped until the server week catches up.
+    setOptimistic((prev) => ({ ...prev, [state.occ.key]: move }));
+
+    startTransition(async () => {
+      try {
+        await editOccurrence({
+          itemId: state.occ.itemId,
+          date: targetDate,
+          recurring: state.occ.recurring,
+          segmentIndex: state.occ.segmentIndex,
+          scope: "occurrence",
+          timeStart,
+          timeEnd,
+        });
+      } catch {
+        setOptimistic((prev) => {
+          const next = { ...prev };
+          delete next[state.occ.key];
+          return next;
+        });
+        setToast("Couldn't move that item. Try again.");
+      }
+    });
+  };
+
+  const handleDragStart = (
+    occ: Occurrence,
+    date: string,
+    e: React.PointerEvent<HTMLDivElement>
+  ) => {
+    if (dragRef.current) return;
+
+    const startMin = minutesIntoDay(occ.start, tz);
+    const endMin = minutesIntoDay(occ.end, tz);
+    const durationMin = Math.max(endMin - startMin, SNAP_MINUTES);
+    const cardRect = e.currentTarget.getBoundingClientRect();
+    const grabOffsetMin = (e.clientY - cardRect.top) / PX_PER_MIN;
+
+    const initial: DragState = {
+      occ,
+      originDate: date,
+      durationMin,
+      grabOffsetMin,
+      date,
+      startMin,
+      moved: false,
+      pointerId: e.pointerId,
+    };
+    dragRef.current = initial;
+
+    const onMove = (ev: PointerEvent) => {
+      const current = dragRef.current;
+      if (!current || ev.pointerId !== current.pointerId) return;
+
+      const dx = ev.clientX - e.clientX;
+      const dy = ev.clientY - e.clientY;
+      const moved =
+        current.moved ||
+        Math.hypot(dx, dy) >= DRAG_THRESHOLD_PX;
+      if (!moved) return;
+
+      // Prefer the day column under the cursor; fall back to origin day.
+      const under = document.elementFromPoint(ev.clientX, ev.clientY);
+      const col = under?.closest("[data-day-date]") as HTMLElement | null;
+      let nextDate = current.originDate;
+      let colEl: HTMLElement | null = col;
+
+      if (col?.dataset.dayDate) {
+        // Recurring items stay on their day; single items can move across days.
+        nextDate = current.occ.recurring
+          ? current.originDate
+          : col.dataset.dayDate;
+        if (nextDate === col.dataset.dayDate) {
+          colEl = col;
+        } else {
+          colEl =
+            (document.querySelector(
+              `[data-day-date="${nextDate}"]`
+            ) as HTMLElement | null) ?? col;
+        }
+      } else {
+        colEl = document.querySelector(
+          `[data-day-date="${nextDate}"]`
+        ) as HTMLElement | null;
+      }
+
+      if (!colEl) return;
+
+      const rect = colEl.getBoundingClientRect();
+      const y = ev.clientY - rect.top;
+      const rawStart = yToDayMinutes(y, hours.startHour) - current.grabOffsetMin;
+      const snapped = snapMinutes(rawStart);
+      const start = clampStartMinutes(
+        snapped,
+        current.durationMin,
+        hours.startHour,
+        hours.endHour
+      );
+
+      const next: DragState = {
+        ...current,
+        moved: true,
+        date: nextDate,
+        startMin: start,
+      };
+      dragRef.current = next;
+      setDrag(next);
+    };
+
+    const onUp = (ev: PointerEvent) => {
+      if (ev.pointerId !== initial.pointerId) return;
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+
+      const finalState = dragRef.current;
+      dragRef.current = null;
+      setDrag(null);
+
+      if (finalState?.moved) {
+        // Pointer-up is followed by a click; don't open the detail modal.
+        suppressClickRef.current = true;
+        commitDrag(finalState);
+      }
+    };
+
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+  };
 
   const height = bodyHeight(hours.startHour, hours.endHour);
   const hourMarks = Array.from(
@@ -158,6 +415,7 @@ export default function WeekView({
   const bodyColumn = (day: DayMeta) => (
     <DayColumn
       key={day.date}
+      date={day.date}
       occurrences={byDate.get(day.date) ?? []}
       tz={tz}
       startHour={hours.startHour}
@@ -165,10 +423,17 @@ export default function WeekView({
       isToday={day.isToday}
       isPast={day.isPast}
       busyKeys={busyKeys}
-      onOpen={setSelected}
+      draggingKey={drag?.occ.key ?? null}
+      onOpen={(occ) => {
+        if (suppressClickRef.current) {
+          suppressClickRef.current = false;
+          return;
+        }
+        setSelected(occ);
+      }}
       onToggleComplete={handleToggle}
       onDelete={handleDelete}
-      onReschedule={setSelected}
+      onDragStart={handleDragStart}
     />
   );
 
@@ -271,7 +536,11 @@ export default function WeekView({
         </div>
       )}
 
-      <div className="stp-scroll flex-1 overflow-auto pb-28">
+      <div
+        className={`stp-scroll flex-1 overflow-auto pb-28 ${
+          drag ? "select-none" : ""
+        }`}
+      >
         <div className="min-w-[820px]">
           {/* Day headers */}
           <div

@@ -1,5 +1,6 @@
 "use client";
 
+import type { PointerEvent as ReactPointerEvent } from "react";
 import { DateTime } from "luxon";
 import type { Occurrence } from "@/lib/types";
 import { CheckIcon, CloseIcon, RepeatIcon } from "@/app/_components/icons";
@@ -12,10 +13,14 @@ interface Props {
   lane: number;
   lanes: number;
   busy: boolean;
+  dragging?: boolean;
   onOpen: (occ: Occurrence) => void;
   onToggleComplete: (occ: Occurrence) => void;
   onDelete: (occ: Occurrence) => void;
-  onReschedule: (occ: Occurrence) => void;
+  onDragStart: (
+    occ: Occurrence,
+    e: ReactPointerEvent<HTMLDivElement>
+  ) => void;
 }
 
 function timeLabel(iso: string, tz: string): string {
@@ -30,10 +35,11 @@ export default function ItemCard({
   lane,
   lanes,
   busy,
+  dragging = false,
   onOpen,
   onToggleComplete,
   onDelete,
-  onReschedule,
+  onDragStart,
 }: Props) {
   const { status, completable, completed, color } = occurrence;
   const isOverdue = status === "overdue";
@@ -55,11 +61,23 @@ export default function ItemCard({
     <div
       role="button"
       tabIndex={0}
-      onClick={() => onOpen(occurrence)}
+      data-item-card
+      onClick={() => {
+        if (!dragging) onOpen(occurrence);
+      }}
       onKeyDown={(e) => {
         if (e.key === "Enter") onOpen(occurrence);
       }}
-      className="group absolute overflow-hidden rounded-lg border border-border text-left shadow-sm transition hover:z-10 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+      onPointerDown={(e) => {
+        // Only primary button; ignore interactive controls inside the card.
+        if (e.button !== 0) return;
+        const target = e.target as HTMLElement;
+        if (target.closest("button")) return;
+        onDragStart(occurrence, e);
+      }}
+      className={`group absolute overflow-hidden rounded-lg border border-border text-left shadow-sm transition hover:z-20 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+        dragging ? "z-30 cursor-grabbing shadow-lg ring-2 ring-accent" : "cursor-grab"
+      }`}
       style={{
         top,
         height,
@@ -67,7 +85,7 @@ export default function ItemCard({
         width: `calc(${widthPct}% - 4px)`,
         background: bg,
         borderLeft: `3px solid ${accent}`,
-        opacity: busy ? 0.6 : 1,
+        opacity: busy && !dragging ? 0.6 : undefined,
       }}
       title={occurrence.title}
     >
@@ -110,18 +128,6 @@ export default function ItemCard({
             <div className="truncate text-[10px] text-muted">
               {timeLabel(occurrence.start, tz)} – {timeLabel(occurrence.end, tz)}
             </div>
-          )}
-          {isOverdue && !compact && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onReschedule(occurrence);
-              }}
-              className="mt-0.5 rounded bg-overdue px-1.5 py-0.5 text-[9px] font-semibold text-white"
-            >
-              Reschedule
-            </button>
           )}
         </div>
 
