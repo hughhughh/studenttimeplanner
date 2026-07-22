@@ -1,9 +1,11 @@
 import { minutesIntoDay } from "@/lib/calendar/time";
 
 /** Vertical scale of the week grid. */
-export const PX_PER_MIN = 1;
-/** Minimum rendered height so very short blocks stay tappable. */
-export const MIN_BLOCK_PX = 22;
+export const PX_PER_MIN = 0.7;
+/** Preferred minimum height when the slot has room. */
+export const MIN_BLOCK_PX = 18;
+/** Breathing room between consecutive cards in the same lane. */
+export const BLOCK_GAP_PX = 2;
 /** Snap drag moves to this many minutes. */
 export const SNAP_MINUTES = 15;
 
@@ -15,7 +17,7 @@ export function bodyHeight(startHour: number, endHour: number): number {
   return (endHour - startHour) * 60 * PX_PER_MIN;
 }
 
-/** Pixel top/height for a block, clamped into the visible working-hours window. */
+/** Pixel top + natural (uncapped) height for a timed block. */
 export function blockPosition(
   startIso: string,
   endIso: string,
@@ -28,7 +30,7 @@ export function blockPosition(
   const s = clamp(minutesIntoDay(startIso, tz), dayStartMin, dayEndMin);
   const e = clamp(minutesIntoDay(endIso, tz), dayStartMin, dayEndMin);
   const top = (s - dayStartMin) * PX_PER_MIN;
-  const height = Math.max((e - s) * PX_PER_MIN, MIN_BLOCK_PX);
+  const height = Math.max((e - s) * PX_PER_MIN, 0);
   return { top, height };
 }
 
@@ -93,4 +95,68 @@ export function assignLanes<T extends Interval>(
   });
   const lanes = Math.max(1, laneEnds.length);
   return placements.map((p) => ({ ...p, lanes }));
+}
+
+export interface DayBlockLayout<T extends Interval> {
+  item: T;
+  lane: number;
+  lanes: number;
+  top: number;
+  height: number;
+}
+
+/**
+ * Place day items: true overlaps go side-by-side; consecutive items keep a
+ * gap and never paint over the next card (short blocks only grow when free).
+ */
+export function layoutDayBlocks<T extends Interval>(
+  intervals: T[],
+  tz: string,
+  startHour: number,
+  endHour: number
+): DayBlockLayout<T>[] {
+  const placed = assignLanes(intervals);
+  const dayEndY = bodyHeight(startHour, endHour);
+
+  const withGeometry = placed.map((p) => {
+    const { top, height: rawHeight } = blockPosition(
+      p.item.start,
+      p.item.end,
+      tz,
+      startHour,
+      endHour
+    );
+    return { ...p, top, rawHeight };
+  });
+
+  const byLane = new Map<number, typeof withGeometry>();
+  for (const entry of withGeometry) {
+    const list = byLane.get(entry.lane) ?? [];
+    list.push(entry);
+    byLane.set(entry.lane, list);
+  }
+
+  const heights = new Map<T, number>();
+  for (const list of byLane.values()) {
+    list.sort((a, b) => a.top - b.top || a.rawHeight - b.rawHeight);
+    for (let i = 0; i < list.length; i++) {
+      const cur = list[i];
+      const nextTop = list[i + 1]?.top ?? dayEndY;
+      const room = Math.max(nextTop - cur.top - BLOCK_GAP_PX, 0);
+      // Prefer a tappable minimum only when it won't cover the next block.
+      const preferred =
+        cur.rawHeight < MIN_BLOCK_PX && MIN_BLOCK_PX <= room
+          ? MIN_BLOCK_PX
+          : cur.rawHeight;
+      heights.set(cur.item, Math.min(preferred, room));
+    }
+  }
+
+  return withGeometry.map((p) => ({
+    item: p.item,
+    lane: p.lane,
+    lanes: p.lanes,
+    top: p.top,
+    height: heights.get(p.item) ?? p.rawHeight,
+  }));
 }

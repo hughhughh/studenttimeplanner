@@ -84,6 +84,11 @@ export default function ItemModal({ occurrence: occ, tz, onClose }: Props) {
               </span>
             </div>
             <p className="mt-1 text-sm text-muted">{dateLabel}</p>
+            {occ.status === "overdue" && !occ.completed && (
+              <p className="mt-1 text-xs font-medium text-overdue">
+                Overdue — pick a new time below, then save.
+              </p>
+            )}
           </div>
           <button
             type="button"

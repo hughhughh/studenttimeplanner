@@ -2,12 +2,12 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { DateTime } from "luxon";
 import type { Occurrence } from "@/lib/types";
 import {
   PX_PER_MIN,
   SNAP_MINUTES,
-  bodyHeight,
   clampStartMinutes,
   minutesToTimeOfDay,
   snapMinutes,
@@ -66,11 +66,17 @@ interface OptimisticMove {
   end: string;
 }
 
-const GRID_TEMPLATE =
-  "repeat(5, minmax(0,1fr)) 14px repeat(2, minmax(0,1fr))";
-const GUTTER = 52;
 const STORAGE_KEY = "studenttimeplanner.workingHours";
+/**
+ * Explicit day width. Compact trial was 6.75rem; full-bleed is ~11–14rem on
+ * typical desktops. Midpoint that stays visibly island-sized:
+ */
+const DAY_COL_CLASS = "w-58"; /* 14.5rem / 232px */
 const DRAG_THRESHOLD_PX = 4;
+
+function isOverdueTask(occ: Occurrence): boolean {
+  return occ.completable && !occ.completed && occ.status === "overdue";
+}
 
 function patchOccurrence(
   occ: Occurrence,
@@ -135,6 +141,12 @@ export default function WeekView({
   const dragRef = useRef<DragState | null>(null);
   const suppressClickRef = useRef(false);
   const [, startTransition] = useTransition();
+  /** Fingerprint of overdue set the user dismissed — re-show if the set changes. */
+  const [overdueDismissedKey, setOverdueDismissedKey] = useState<string | null>(
+    null
+  );
+  const [rescheduling, setRescheduling] = useState(false);
+  const router = useRouter();
 
   useEffect(() => {
     try {
@@ -199,6 +211,70 @@ export default function WeekView({
     }
     return map;
   }, [displayOccurrences]);
+
+  const overdueTasks = useMemo(() => {
+    const list = displayOccurrences.filter(isOverdueTask);
+    list.sort((a, b) => a.end.localeCompare(b.end));
+    return list;
+  }, [displayOccurrences]);
+
+  const overdueKey = overdueTasks.map((o) => o.key).join("|");
+  const showOverduePrompt =
+    overdueTasks.length > 0 && overdueDismissedKey !== overdueKey;
+
+  const weekContext = useMemo(
+    () => ({
+      weekDates: days.map((d) => d.date),
+      tz,
+      nowIso,
+    }),
+    [days, tz, nowIso]
+  );
+
+  const rescheduleOverdue = () => {
+    if (rescheduling || overdueTasks.length === 0) return;
+    const listed = overdueTasks
+      .map(
+        (o) =>
+          `"${o.title}" (id=${o.itemId}, was ${o.date}, duration keep the same length)`
+      )
+      .join("; ");
+    const text =
+      overdueTasks.length === 1
+        ? `Reschedule my overdue incomplete task ${listed} to the next free slot sometime soon (today or the next free day this week). Prefer a study_period if one is free; otherwise evening. Keep the same duration. Do not ask for confirmation — just move it.`
+        : `Reschedule these overdue incomplete tasks to the next free slots sometime soon (today or the next free days this week), without overlapping fixed items: ${listed}. Prefer study_period blocks when free; otherwise evenings. Keep each task's duration. Do not ask for confirmation — just move them.`;
+
+    setRescheduling(true);
+    startTransition(async () => {
+      try {
+        const res = await fetch("/api/ai", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text, context: weekContext }),
+        });
+        const data = await res.json();
+        if (!res.ok || data.ok === false) {
+          setToast(
+            data.clarification ??
+              data.error ??
+              "Couldn't reschedule those tasks. Try again."
+          );
+          return;
+        }
+        if (data.clarification && !data.summary) {
+          setToast(data.clarification);
+          return;
+        }
+        setOverdueDismissedKey(overdueKey);
+        setToast(data.summary ?? "Rescheduled your overdue task(s).");
+        router.refresh();
+      } catch {
+        setToast("Couldn't reach the planner to reschedule.");
+      } finally {
+        setRescheduling(false);
+      }
+    });
+  };
 
   const withBusy = (key: string, fn: () => Promise<void>) => {
     setBusyKeys((prev) => new Set(prev).add(key));
@@ -379,69 +455,73 @@ export default function WeekView({
     window.addEventListener("pointercancel", onUp);
   };
 
-  const height = bodyHeight(hours.startHour, hours.endHour);
-  const hourMarks = Array.from(
-    { length: hours.endHour - hours.startHour + 1 },
-    (_, i) => hours.startHour + i
-  );
-
   const weekdayDays = days.slice(0, 5);
   const weekendDays = days.slice(5, 7);
 
-  const dayHeader = (day: DayMeta) => (
+  const dayIsland = (day: DayMeta) => (
     <div
       key={day.date}
-      className={`flex flex-col items-center py-2 ${
-        day.isPast ? "text-muted" : "text-foreground"
+      className={`${DAY_COL_CLASS} flex shrink-0 flex-col overflow-hidden rounded-xl border shadow-[0_1px_2px_rgba(24,24,27,0.04),0_8px_20px_rgba(24,24,27,0.06)] ${
+        day.isToday
+          ? "border-accent/35 bg-surface"
+          : "border-border/80 bg-surface"
       }`}
     >
-      <span
-        className={`text-[11px] font-medium uppercase ${
-          day.isToday ? "text-accent-strong" : ""
+      <div
+        className={`flex flex-col items-center border-b border-border/70 px-1 py-1.5 ${
+          day.isPast ? "text-muted" : "text-foreground"
+        } ${
+          day.isToday
+            ? "bg-accent-soft/50"
+            : day.isPast
+              ? "bg-surface-muted/60"
+              : "bg-surface"
         }`}
       >
-        {day.label}
-      </span>
-      <span
-        className={`mt-0.5 flex h-7 w-7 items-center justify-center rounded-full text-sm font-semibold ${
-          day.isToday ? "bg-accent text-white" : ""
-        }`}
-      >
-        {day.dayOfMonth}
-      </span>
+        <span
+          className={`text-[10px] font-medium uppercase tracking-wide ${
+            day.isToday ? "text-accent-strong" : ""
+          }`}
+        >
+          {day.label}
+        </span>
+        <span
+          className={`mt-0.5 flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold ${
+            day.isToday ? "bg-accent text-white" : ""
+          }`}
+        >
+          {day.dayOfMonth}
+        </span>
+      </div>
+      <DayColumn
+        date={day.date}
+        occurrences={byDate.get(day.date) ?? []}
+        tz={tz}
+        startHour={hours.startHour}
+        endHour={hours.endHour}
+        isToday={day.isToday}
+        isPast={day.isPast}
+        busyKeys={busyKeys}
+        draggingKey={drag?.occ.key ?? null}
+        onOpen={(occ) => {
+          if (suppressClickRef.current) {
+            suppressClickRef.current = false;
+            return;
+          }
+          setSelected(occ);
+        }}
+        onToggleComplete={handleToggle}
+        onDelete={handleDelete}
+        onDragStart={handleDragStart}
+      />
     </div>
-  );
-
-  const bodyColumn = (day: DayMeta) => (
-    <DayColumn
-      key={day.date}
-      date={day.date}
-      occurrences={byDate.get(day.date) ?? []}
-      tz={tz}
-      startHour={hours.startHour}
-      endHour={hours.endHour}
-      isToday={day.isToday}
-      isPast={day.isPast}
-      busyKeys={busyKeys}
-      draggingKey={drag?.occ.key ?? null}
-      onOpen={(occ) => {
-        if (suppressClickRef.current) {
-          suppressClickRef.current = false;
-          return;
-        }
-        setSelected(occ);
-      }}
-      onToggleComplete={handleToggle}
-      onDelete={handleDelete}
-      onDragStart={handleDragStart}
-    />
   );
 
   return (
     <div className="flex h-full flex-col">
       <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3 sm:px-6">
         <div className="flex items-center gap-3">
-          <Link href="/home" className="text-lg font-bold tracking-tight">
+          <Link href="/" className="text-lg font-bold tracking-tight">
             Student Time{" "}
             <span className="text-accent">Planner</span>
           </Link>
@@ -484,20 +564,20 @@ export default function WeekView({
 
           <div className="flex items-center gap-1">
             <Link
-              href={`/?w=${weekOffset - 1}`}
+              href={`/planner?w=${weekOffset - 1}`}
               className="rounded-lg border border-border px-2.5 py-1.5 text-sm hover:bg-black/5"
               aria-label="Previous week"
             >
               ‹
             </Link>
             <Link
-              href="/?w=0"
+              href="/planner?w=0"
               className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium hover:bg-black/5"
             >
               Today
             </Link>
             <Link
-              href={`/?w=${weekOffset + 1}`}
+              href={`/planner?w=${weekOffset + 1}`}
               className="rounded-lg border border-border px-2.5 py-1.5 text-sm hover:bg-black/5"
               aria-label="Next week"
             >
@@ -537,59 +617,73 @@ export default function WeekView({
       )}
 
       <div
-        className={`stp-scroll flex-1 overflow-auto pb-28 ${
+        className={`stp-scroll min-h-0 flex-1 overflow-auto bg-background ${
           drag ? "select-none" : ""
         }`}
       >
-        <div className="min-w-[820px]">
-          {/* Day headers */}
-          <div
-            className="sticky top-0 z-10 flex border-b border-border bg-surface/95 backdrop-blur"
-            style={{ paddingLeft: GUTTER }}
-          >
-            <div
-              className="grid flex-1"
-              style={{ gridTemplateColumns: GRID_TEMPLATE }}
-            >
-              {weekdayDays.map(dayHeader)}
-              <div />
-              {weekendDays.map(dayHeader)}
+        <div className="flex justify-center px-4 py-4">
+          <div className="flex w-fit max-w-full flex-col">
+            <div className="flex gap-2.5">
+              {weekdayDays.map(dayIsland)}
+              <div className="w-2.5 shrink-0" aria-hidden />
+              {weekendDays.map(dayIsland)}
             </div>
-          </div>
 
-          {/* Time gutter + day bodies */}
-          <div className="flex">
-            <div className="relative flex-none" style={{ width: GUTTER, height }}>
-              {hourMarks.map((h) => (
-                <div
-                  key={h}
-                  className="absolute right-1.5 -translate-y-1/2 text-[10px] text-muted"
-                  style={{ top: (h - hours.startHour) * 60 * PX_PER_MIN }}
-                >
-                  {h}:00
+            <div className="mt-4 w-full self-center" style={{ maxWidth: "36rem" }}>
+              <CommandBar
+                weekContext={weekContext}
+                onTimetableDraft={(d) => setDraft(d as TimetableDraft)}
+              />
+
+              {showOverduePrompt && (
+                <div className="mt-2 flex items-center justify-between gap-3 px-1 py-1.5 text-xs text-muted">
+                  <p className="min-w-0 truncate">
+                    {overdueTasks.length === 1 ? (
+                      <>
+                        <span className="text-overdue">{overdueTasks[0].title}</span>
+                        {" "}is overdue — reschedule?
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-overdue">
+                          {overdueTasks.length} overdue
+                        </span>
+                        {" — "}
+                        {overdueTasks
+                          .slice(0, 2)
+                          .map((o) => o.title)
+                          .join(", ")}
+                        {overdueTasks.length > 2
+                          ? ` +${overdueTasks.length - 2}`
+                          : ""}
+                        . Reschedule?
+                      </>
+                    )}
+                  </p>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setOverdueDismissedKey(overdueKey)}
+                      disabled={rescheduling}
+                      className="text-muted hover:text-foreground disabled:opacity-50"
+                    >
+                      Dismiss
+                    </button>
+                    <button
+                      type="button"
+                      onClick={rescheduleOverdue}
+                      disabled={rescheduling}
+                      className="font-medium text-overdue hover:underline disabled:opacity-50"
+                    >
+                      {rescheduling ? "Rescheduling…" : "Reschedule"}
+                    </button>
+                  </div>
                 </div>
-              ))}
-            </div>
-            <div
-              className="grid flex-1"
-              style={{ gridTemplateColumns: GRID_TEMPLATE }}
-            >
-              {weekdayDays.map(bodyColumn)}
-              <div />
-              {weekendDays.map(bodyColumn)}
+              )}
             </div>
           </div>
         </div>
       </div>
-
-      <CommandBar
-        weekContext={{
-          weekDates: days.map((d) => d.date),
-          tz,
-          nowIso,
-        }}
-        onTimetableDraft={(d) => setDraft(d as TimetableDraft)}
-      />
 
       {selected && (
         <ItemModal

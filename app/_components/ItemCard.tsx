@@ -5,6 +5,11 @@ import { DateTime } from "luxon";
 import type { Occurrence } from "@/lib/types";
 import { CheckIcon, CloseIcon, RepeatIcon } from "@/app/_components/icons";
 
+/** Events shorter than this get the quiet tick UI instead of a full card. */
+const BRIEF_MINUTES = 20;
+/** Rendered height below this also uses the tick UI (squeezed slots). */
+const BRIEF_HEIGHT_PX = 16;
+
 interface Props {
   occurrence: Occurrence;
   tz: string;
@@ -25,6 +30,12 @@ interface Props {
 
 function timeLabel(iso: string, tz: string): string {
   return DateTime.fromISO(iso, { zone: tz }).toFormat("h:mm a").toLowerCase();
+}
+
+function durationMinutes(startIso: string, endIso: string, tz: string): number {
+  const start = DateTime.fromISO(startIso, { zone: tz });
+  const end = DateTime.fromISO(endIso, { zone: tz });
+  return Math.max(end.diff(start, "minutes").minutes, 0);
 }
 
 export default function ItemCard({
@@ -55,27 +66,70 @@ export default function ItemCard({
       ? "var(--overdue-soft)"
       : "var(--surface)";
 
-  const compact = height < 40;
+  const brief =
+    height < BRIEF_HEIGHT_PX ||
+    durationMinutes(occurrence.start, occurrence.end, tz) <= BRIEF_MINUTES;
+
+  const tooltip = `${occurrence.title} · ${timeLabel(occurrence.start, tz)} – ${timeLabel(occurrence.end, tz)}`;
+
+  const sharedPointer = {
+    onClick: () => {
+      if (!dragging) onOpen(occurrence);
+    },
+    onKeyDown: (e: React.KeyboardEvent) => {
+      if (e.key === "Enter") onOpen(occurrence);
+    },
+    onPointerDown: (e: ReactPointerEvent<HTMLDivElement>) => {
+      if (e.button !== 0) return;
+      const target = e.target as HTMLElement;
+      if (target.closest("button")) return;
+      onDragStart(occurrence, e);
+    },
+  };
+
+  // Same card look as normal items — just title-only for chapel-length slots.
+  if (brief) {
+    return (
+      <div
+        role="button"
+        tabIndex={0}
+        data-item-card
+        data-brief=""
+        {...sharedPointer}
+        className={`group absolute flex items-center overflow-hidden rounded-md border border-border text-left shadow-sm transition hover:z-20 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+          dragging ? "z-30 cursor-grabbing shadow-lg ring-2 ring-accent" : "cursor-grab"
+        }`}
+        style={{
+          top,
+          height: Math.max(height, 3),
+          left: `calc(${leftPct}% + 2px)`,
+          width: `calc(${widthPct}% - 4px)`,
+          background: bg,
+          borderLeft: `3px solid ${accent}`,
+          opacity: busy && !dragging ? 0.6 : undefined,
+        }}
+        title={tooltip}
+      >
+        <span
+          className={`min-w-0 flex-1 truncate px-1.5 text-[10px] font-semibold leading-none ${
+            isDone ? "text-muted line-through" : "text-foreground"
+          }`}
+        >
+          {occurrence.title}
+        </span>
+      </div>
+    );
+  }
+
+  const compact = height < 32;
 
   return (
     <div
       role="button"
       tabIndex={0}
       data-item-card
-      onClick={() => {
-        if (!dragging) onOpen(occurrence);
-      }}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") onOpen(occurrence);
-      }}
-      onPointerDown={(e) => {
-        // Only primary button; ignore interactive controls inside the card.
-        if (e.button !== 0) return;
-        const target = e.target as HTMLElement;
-        if (target.closest("button")) return;
-        onDragStart(occurrence, e);
-      }}
-      className={`group absolute overflow-hidden rounded-lg border border-border text-left shadow-sm transition hover:z-20 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+      {...sharedPointer}
+      className={`group absolute overflow-hidden rounded-md border border-border text-left shadow-sm transition hover:z-20 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
         dragging ? "z-30 cursor-grabbing shadow-lg ring-2 ring-accent" : "cursor-grab"
       }`}
       style={{
@@ -87,7 +141,7 @@ export default function ItemCard({
         borderLeft: `3px solid ${accent}`,
         opacity: busy && !dragging ? 0.6 : undefined,
       }}
-      title={occurrence.title}
+      title={tooltip}
     >
       <div className="flex h-full items-start gap-1.5 px-1.5 py-1">
         {completable ? (

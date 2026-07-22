@@ -3,6 +3,8 @@ import {
   assignLanes,
   blockPosition,
   bodyHeight,
+  BLOCK_GAP_PX,
+  layoutDayBlocks,
   MIN_BLOCK_PX,
   PX_PER_MIN,
   clampStartMinutes,
@@ -26,11 +28,11 @@ describe("grid layout", () => {
     expect(height).toBe(60 * PX_PER_MIN);
   });
 
-  it("enforces a minimum block height for very short events", () => {
+  it("keeps natural height for short events (min applied in layoutDayBlocks)", () => {
     const start = at("2026-07-22", "12:00");
     const end = at("2026-07-22", "12:05");
     const { height } = blockPosition(start, end, TZ, 6, 22);
-    expect(height).toBe(MIN_BLOCK_PX);
+    expect(height).toBe(5 * PX_PER_MIN);
   });
 
   it("assigns overlapping intervals to different lanes", () => {
@@ -44,6 +46,40 @@ describe("grid layout", () => {
     // c starts when a ends → can reuse lane 0
     expect(placed[2].lane).toBe(0);
     expect(placed[0].lanes).toBe(2);
+  });
+
+  it("does not let a short block paint over the next consecutive card", () => {
+    const short = {
+      start: at("2026-07-22", "09:00"),
+      end: at("2026-07-22", "09:05"),
+    };
+    const next = {
+      start: at("2026-07-22", "09:05"),
+      end: at("2026-07-22", "10:00"),
+    };
+    const laid = layoutDayBlocks([short, next], TZ, 6, 22);
+    const shortLaid = laid.find((p) => p.item === short)!;
+    const nextLaid = laid.find((p) => p.item === next)!;
+    expect(shortLaid.lane).toBe(nextLaid.lane);
+    expect(shortLaid.top + shortLaid.height + BLOCK_GAP_PX).toBeLessThanOrEqual(
+      nextLaid.top + 0.001
+    );
+    // Natural height is 5px; gap eats 2px so the short card shrinks to fit.
+    expect(shortLaid.height).toBeCloseTo(5 * PX_PER_MIN - BLOCK_GAP_PX);
+  });
+
+  it("grows a short block to the minimum when the next slot leaves room", () => {
+    const short = {
+      start: at("2026-07-22", "09:00"),
+      end: at("2026-07-22", "09:05"),
+    };
+    const next = {
+      start: at("2026-07-22", "09:40"),
+      end: at("2026-07-22", "10:00"),
+    };
+    const laid = layoutDayBlocks([short, next], TZ, 6, 22);
+    const shortLaid = laid.find((p) => p.item === short)!;
+    expect(shortLaid.height).toBe(MIN_BLOCK_PX);
   });
 
   it("snaps minutes to 15-minute steps", () => {

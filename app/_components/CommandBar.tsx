@@ -90,57 +90,55 @@ export default function CommandBar({ weekContext, onTimetableDraft }: Props) {
         : "text-accent-strong";
 
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-30 flex justify-center px-4 pb-5">
-      <div className="pointer-events-auto w-full max-w-2xl">
-        {feedback && (
-          <div className="mb-2 flex items-start justify-between gap-3 rounded-xl border border-border bg-surface px-4 py-2 text-sm shadow-lg">
-            <span className={feedbackColor}>{feedback.text}</span>
-            <button
-              type="button"
-              onClick={() => setFeedback(null)}
-              className="text-xs text-muted hover:text-foreground"
-            >
-              Dismiss
-            </button>
-          </div>
-        )}
-        <div className="flex items-center gap-2 rounded-full border border-border bg-surface px-2 py-1.5 shadow-lg">
-          <SparkleIcon className="ml-2 h-4 w-4 flex-none text-accent" />
-          <input
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") submit();
-            }}
-            placeholder="add tasks, edit calendar…"
-            className="min-w-0 flex-1 bg-transparent px-1 py-1.5 text-sm placeholder:text-muted focus:outline-none"
-            aria-label="Tell the planner what to do"
-          />
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={(e) => onPickImage(e.target.files?.[0])}
-          />
+    <div className="w-full">
+      {feedback && (
+        <div className="mb-2 flex items-start justify-between gap-3 rounded-xl border border-border bg-surface px-4 py-2 text-sm">
+          <span className={feedbackColor}>{feedback.text}</span>
           <button
             type="button"
-            onClick={() => fileRef.current?.click()}
-            disabled={pending}
-            className="rounded-full px-3 py-1.5 text-xs font-medium text-muted hover:bg-black/5 disabled:opacity-60"
-            title="Upload a timetable photo"
+            onClick={() => setFeedback(null)}
+            className="text-xs text-muted hover:text-foreground"
           >
-            Timetable
-          </button>
-          <button
-            type="button"
-            onClick={submit}
-            disabled={pending || !text.trim()}
-            className="rounded-full bg-accent px-4 py-1.5 text-sm font-semibold text-white transition hover:bg-accent-strong disabled:opacity-50"
-          >
-            {pending ? "…" : "Send"}
+            Dismiss
           </button>
         </div>
+      )}
+      <div className="flex items-center gap-2 rounded-full border border-border bg-surface px-2 py-1.5 shadow-sm">
+        <SparkleIcon className="ml-2 h-4 w-4 flex-none text-accent" />
+        <input
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") submit();
+          }}
+          placeholder="add tasks, edit calendar…"
+          className="min-w-0 flex-1 bg-transparent px-1 py-1.5 text-sm placeholder:text-muted focus:outline-none"
+          aria-label="Tell the planner what to do"
+        />
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => onPickImage(e.target.files?.[0])}
+        />
+        <button
+          type="button"
+          onClick={() => fileRef.current?.click()}
+          disabled={pending}
+          className="rounded-full px-3 py-1.5 text-xs font-medium text-muted hover:bg-black/5 disabled:opacity-60"
+          title="Upload a timetable photo"
+        >
+          Timetable
+        </button>
+        <button
+          type="button"
+          onClick={submit}
+          disabled={pending || !text.trim()}
+          className="rounded-full bg-accent px-4 py-1.5 text-sm font-semibold text-white transition hover:bg-accent-strong disabled:opacity-50"
+        >
+          {pending ? "…" : "Send"}
+        </button>
       </div>
     </div>
   );

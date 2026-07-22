@@ -32,13 +32,13 @@ export default function FolioPage() {
           </div>
           <nav className="flex shrink-0 items-center gap-3 text-sm">
             <Link
-              href="/home"
+              href="/"
               className="text-muted transition hover:text-foreground"
             >
               Home
             </Link>
             <Link
-              href="/"
+              href="/planner"
               className="rounded-full bg-accent px-3 py-1.5 font-semibold text-white transition hover:bg-accent-strong"
             >
               Open planner

@@ -59,7 +59,7 @@ export async function verifyCodeAction(
     return { ...prev, step: "code", email, error: result.error };
   }
 
-  redirect("/");
+  redirect("/planner");
 }
 
 /** Single entry point for the login form's useActionState; branches on intent. */
@@ -76,7 +76,7 @@ export async function loginAction(
 
 export async function demoLoginAction(): Promise<void> {
   await createDemoSession();
-  redirect("/");
+  redirect("/planner");
 }
 
 export async function logoutAction(): Promise<void> {

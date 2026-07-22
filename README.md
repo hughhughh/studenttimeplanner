@@ -55,10 +55,10 @@ Next.js 16 · React 19 · TypeScript · Tailwind CSS v4 · MongoDB (`mongodb`) �
    npm run dev
    ```
 
-   Open http://localhost:3000. The landing page is at `/home`; the planner is at
-   `/` (requires sign-in); the Assessment 3 theory folio is at `/folio` (public).
-   Without `RESEND_API_KEY`, use **Continue as demo** on the login page to see the
-   seeded data.
+   Open http://localhost:3000. The landing page is at `/`; the planner is at
+   `/planner` (requires sign-in); the Assessment 3 theory folio is at `/folio`
+   (public). Without `RESEND_API_KEY`, use **Continue as guest** on the login
+   page (or the landing page) to see the seeded data.
 
 ## Tests
 

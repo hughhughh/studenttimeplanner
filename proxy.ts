@@ -8,7 +8,7 @@ import { SESSION_COOKIE, decryptSession } from "@/lib/auth/session";
  * still happens in the data layer (verifySession / route handlers).
  */
 
-const PUBLIC_PATHS = new Set(["/home", "/login"]);
+const PUBLIC_PATHS = new Set(["/", "/home", "/login"]);
 
 function isPublicPath(pathname: string): boolean {
   if (PUBLIC_PATHS.has(pathname)) return true;
@@ -27,7 +27,7 @@ export default async function proxy(req: NextRequest) {
     return NextResponse.redirect(new URL("/login", req.nextUrl));
   }
   if (session && pathname === "/login") {
-    return NextResponse.redirect(new URL("/", req.nextUrl));
+    return NextResponse.redirect(new URL("/planner", req.nextUrl));
   }
   return NextResponse.next();
 }
