@@ -1,26 +1,81 @@
 @import "tailwindcss";
 
+/*
+ * Student Time Planner palette: ~60% white, ~30% near-black, ~10% accent green.
+ */
 :root {
   --background: #ffffff;
-  --foreground: #171717;
+  --surface: #ffffff;
+  --surface-muted: #f6f7f5;
+  --foreground: #18181b;
+  --muted: #71717a;
+  --border: #e7e7e4;
+
+  --accent: #66aa3c;
+  --accent-strong: #4f8a2c;
+  --accent-soft: #eef5e7;
+
+  --overdue: #f97316;
+  --overdue-soft: #fff2e6;
+  --done: #66aa3c;
+  --now: #ef4444;
 }
 
 @theme inline {
   --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
   --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-soft: var(--accent-soft);
+  --color-overdue: var(--overdue);
+  --color-overdue-soft: var(--overdue-soft);
+  --color-now: var(--now);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --font-serif: var(--font-folio-serif), ui-serif, Georgia, serif;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  scroll-behavior: smooth;
+  height: 100%;
 }
 
 body {
+  height: 100%;
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Thin, unobtrusive scrollbars for the week grid. */
+.stp-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.stp-scroll::-webkit-scrollbar {
+  height: 8px;
+  width: 8px;
+}
+.stp-scroll::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 9999px;
+}
+
+/* Folio long-form reading styles */
+.folio-prose a {
+  color: var(--accent-strong);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.folio-prose code {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 0.85em;
+  background: var(--surface-muted);
+  padding: 0.1em 0.35em;
+  border-radius: 0.25rem;
 }
