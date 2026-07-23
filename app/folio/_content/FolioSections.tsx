@@ -670,8 +670,8 @@ export default function FolioSections() {
             ],
             [
               "23-07-26",
-              "Closed out remaining folio / evaluation checklist work marked on the Gantt (documentation polish, scheduled-vs-done chart colours, diary aligned to real commits).",
-              "Milestone: diary and version sequence now match both repositories and the Gantt coding days.",
+              "Assessment close-out. Expanded AI apply (undo, bulk colour, time ranges), automated suite to 74 tests, deepened WAgile case studies, added legal footer pages, green-circle favicon, prototyping screenshots (live week view + npm test), and PageSpeed Insights evidence (Performance 100). Fixed production TypeScript build for Vercel (23b7fef / bb31036 lineage).",
+              "Milestone: deployable build, folio evaluation complete, version sequence aligned to final commits; Schoolbox zip ready.",
             ],
           ]}
         />
@@ -994,7 +994,7 @@ END HandleTimetableImport`}
             [
               "v0.3 — Folio + planner body",
               "22-07-26",
-              "1ad8e33 — Folio (documentation site and core planner components landed in history)",
+              "1ad8e33 — Folio (documentation site and core planner components)",
             ],
             [
               "v0.4 — Calendar UX",
@@ -1004,7 +1004,22 @@ END HandleTimetableImport`}
             [
               "v0.5 — UI polish",
               "22-07-26",
-              "01ee90f — UI change (home/planner presentation and related components)",
+              "01ee90f — UI change (home/planner presentation)",
+            ],
+            [
+              "v0.6 — AI + calendar functionality",
+              "23-07-26",
+              "bb31036 — Major updates to functionality, other tweaks as well (undo, bulk colour, time ranges, Gantt, expanded Vitest suite)",
+            ],
+            [
+              "v0.7 — Deploy polish + legal",
+              "23-07-26",
+              "23b7fef — production build fix, website polishing (favicon, SiteFooter, /legal pages, Zod type fix for Vercel)",
+            ],
+            [
+              "v0.8 — Evaluation evidence (final)",
+              "23-07-26",
+              "Final submission commit — PageSpeed Insights figure (Performance 100), folio testing write-up, diary/version sequence aligned for Schoolbox zip",
             ],
           ]}
         />
@@ -1367,21 +1382,11 @@ npm test`}</Pseudo>
         </p>
         <ul className="list-disc space-y-2 pl-5">
           <li>
-            <strong>PageSpeed / local feel:</strong> the planner is a thin
-            React week grid over a small Mongo payload. Measured locally,{" "}
-            <code>npm test</code> is ~1s; cold{" "}
-            <code>/login</code> and <code>/</code> render immediately in
-            headless Chrome capture. Drop a PageSpeed Insights screenshot at{" "}
-            <code>public/folio/pagespeed.png</code> after you run{" "}
-            <a
-              href="https://pagespeed.web.dev/"
-              target="_blank"
-              rel="noreferrer"
-            >
-              pagespeed.web.dev
-            </a>{" "}
-            on the deployed (or tunnelled) URL — target: performance score ≥ 80
-            on mobile for the landing page.
+            <strong>PageSpeed Insights (desktop, 23 Jul 2026):</strong> landing
+            page scored <strong>Performance 100</strong>, Accessibility 95, Best
+            Practices 100, SEO 91 (Lighthouse 13.4). Core Web Vitals: FCP 0.2s,
+            LCP 0.3s, TBT 0ms, CLS 0, Speed Index 0.7s — well above the ≥80
+            performance target.
           </li>
           <li>
             <strong>Accessibility:</strong> semantic headings on folio and
@@ -1392,6 +1397,25 @@ npm test`}</Pseudo>
             claimed complete.
           </li>
         </ul>
+        <figure className="mt-4 overflow-hidden rounded-xl border border-border bg-surface-muted/40">
+          <img
+            src="/folio/pagespeed.png"
+            alt="Google PageSpeed Insights desktop report for Student Time Planner landing page: Performance 100, Accessibility 95, Best Practices 100, SEO 91, with FCP 0.2s and LCP 0.3s."
+            className="mx-auto max-h-[36rem] w-full object-contain object-top bg-white"
+          />
+          <figcaption className="border-t border-border px-4 py-3 text-center text-xs text-muted">
+            Figure — PageSpeed Insights (desktop) for the deployed landing page,
+            captured 23 Jul 2026 via{" "}
+            <a
+              href="https://pagespeed.web.dev/"
+              target="_blank"
+              rel="noreferrer"
+            >
+              pagespeed.web.dev
+            </a>
+            .
+          </figcaption>
+        </figure>
         <h3 className="font-serif text-lg font-semibold">
           Feedback analysis and response
         </h3>
