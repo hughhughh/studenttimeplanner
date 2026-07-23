@@ -1,5 +1,7 @@
 # Student Time Planner
 
+www.studenttimeplanner.responsehsc.com
+
 An AI-driven weekly study planner for students. Talk to your calendar in plain
 language ("add an hour of English study tonight"), or photograph your school
 timetable and watch your week fill in. Built with Next.js 16 (App Router),
