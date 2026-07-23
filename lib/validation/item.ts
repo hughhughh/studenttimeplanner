@@ -48,8 +48,14 @@ export const recurrenceSchema = z
     timeStart: timeOfDay,
     timeEnd: timeOfDay,
     startDate: isoDate,
-    endDate: isoDate.optional(),
-    interval: z.number().int().min(1).max(4).optional(),
+    endDate: isoDate.nullish().transform((v) => v ?? undefined),
+    interval: z
+      .number()
+      .int()
+      .min(1)
+      .max(4)
+      .nullish()
+      .transform((v) => v ?? undefined),
   })
   .refine(
     (r) =>
@@ -65,12 +71,12 @@ export const recurrenceSchema = z
   });
 
 export const overrideSchema = z.object({
-  title: z.string().min(1).max(200).optional(),
-  color: hexColor.optional(),
-  timeStart: timeOfDay.optional(),
-  timeEnd: timeOfDay.optional(),
-  notes: z.string().max(2000).optional(),
-  completed: z.boolean().optional(),
+  title: z.string().min(1).max(200).nullish().transform((v) => v ?? undefined),
+  color: hexColor.nullish().transform((v) => v ?? undefined),
+  timeStart: timeOfDay.nullish().transform((v) => v ?? undefined),
+  timeEnd: timeOfDay.nullish().transform((v) => v ?? undefined),
+  notes: z.string().max(2000).nullish().transform((v) => v ?? undefined),
+  completed: z.boolean().nullish().transform((v) => v ?? undefined),
   completedAt: z.string().nullable().optional(),
 });
 
@@ -79,8 +85,11 @@ const baseItemFields = {
   title: z.string().min(1, "Title is required").max(200),
   color: hexColor,
   movable: z.boolean(),
-  notes: z.string().max(2000).optional(),
-  schedulingRole: z.enum(["study_period"]).optional(),
+  notes: z.string().max(2000).nullish().transform((v) => v ?? undefined),
+  schedulingRole: z
+    .enum(["study_period"])
+    .nullish()
+    .transform((v) => v ?? undefined),
   tz: z.string().min(1),
 };
 

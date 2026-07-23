@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   aiResponseSchema,
   rawOperationSchema,
+  repairAiResponse,
 } from "@/lib/ai/operations";
 
 describe("AI operation schemas", () => {
@@ -56,5 +57,54 @@ describe("AI operation schemas", () => {
       operations: "not-an-array",
     });
     expect(result.success).toBe(false);
+  });
+
+  it("coerces Gemini null optionals to undefined", () => {
+    const result = aiResponseSchema.safeParse({
+      summary: "Added Assembly.",
+      clarification: null,
+      operations: [
+        {
+          type: "createItem",
+          itemType: "activity",
+          title: "Assembly",
+          timeStart: "11:55",
+          timeEnd: "12:50",
+          endDate: null,
+          notes: null,
+          color: null,
+          startDate: null,
+          interval: null,
+          byWeekday: [5],
+          recurring: true,
+          freq: "weekly",
+        },
+      ],
+    });
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    const op = result.data.operations![0];
+    expect(op.endDate).toBeUndefined();
+    expect(op.notes).toBeUndefined();
+    expect(op.color).toBeUndefined();
+    expect(result.data.clarification).toBeUndefined();
+  });
+
+  it("repairs missing type on a series timeStart change as updateItem", () => {
+    const repaired = repairAiResponse({
+      operations: [
+        {
+          itemId: "6a61b7377b3239eef1bbb6e9",
+          scope: "series",
+          timeStart: "12:00",
+        },
+      ],
+    });
+    const result = aiResponseSchema.safeParse(repaired);
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.data.operations![0].type).toBe("updateItem");
+    expect(result.data.operations![0].timeStart).toBe("12:00");
+    expect(result.data.operations![0].scope).toBe("series");
   });
 });

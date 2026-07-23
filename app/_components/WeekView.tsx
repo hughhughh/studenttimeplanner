@@ -23,9 +23,6 @@ import { logoutAction } from "@/app/actions/auth";
 import DayColumn from "@/app/_components/DayColumn";
 import ItemModal from "@/app/_components/ItemModal";
 import CommandBar from "@/app/_components/CommandBar";
-import TimetableReview, {
-  type TimetableDraft,
-} from "@/app/_components/TimetableReview";
 
 export interface DayMeta {
   date: string;
@@ -131,8 +128,6 @@ export default function WeekView({
 }: Props) {
   const [hours, setHours] = useState(defaultWorkingHours);
   const [selected, setSelected] = useState<Occurrence | null>(null);
-  const [draft, setDraft] = useState<TimetableDraft | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
   const [busyKeys, setBusyKeys] = useState<Set<string>>(new Set());
   const [optimistic, setOptimistic] = useState<Record<string, OptimisticMove>>(
     {}
@@ -246,31 +241,28 @@ export default function WeekView({
 
     setRescheduling(true);
     startTransition(async () => {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 50_000);
       try {
         const res = await fetch("/api/ai", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ text, context: weekContext }),
+          signal: controller.signal,
         });
         const data = await res.json();
         if (!res.ok || data.ok === false) {
-          setToast(
-            data.clarification ??
-              data.error ??
-              "Couldn't reschedule those tasks. Try again."
-          );
           return;
         }
         if (data.clarification && !data.summary) {
-          setToast(data.clarification);
           return;
         }
         setOverdueDismissedKey(overdueKey);
-        setToast(data.summary ?? "Rescheduled your overdue task(s).");
         router.refresh();
       } catch {
-        setToast("Couldn't reach the planner to reschedule.");
+        // Keep the overdue prompt visible so the student can retry.
       } finally {
+        clearTimeout(timer);
         setRescheduling(false);
       }
     });
@@ -344,7 +336,6 @@ export default function WeekView({
           delete next[state.occ.key];
           return next;
         });
-        setToast("Couldn't move that item. Try again.");
       }
     });
   };
@@ -562,29 +553,6 @@ export default function WeekView({
             </select>
           </div>
 
-          <div className="flex items-center gap-1">
-            <Link
-              href={`/planner?w=${weekOffset - 1}`}
-              className="rounded-lg border border-border px-2.5 py-1.5 text-sm hover:bg-black/5"
-              aria-label="Previous week"
-            >
-              ‹
-            </Link>
-            <Link
-              href="/planner?w=0"
-              className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium hover:bg-black/5"
-            >
-              Today
-            </Link>
-            <Link
-              href={`/planner?w=${weekOffset + 1}`}
-              className="rounded-lg border border-border px-2.5 py-1.5 text-sm hover:bg-black/5"
-              aria-label="Next week"
-            >
-              ›
-            </Link>
-          </div>
-
           <Link
             href="/folio"
             className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-muted hover:bg-black/5"
@@ -610,12 +578,6 @@ export default function WeekView({
         </div>
       )}
 
-      {toast && (
-        <div className="border-b border-border bg-accent-soft px-4 py-2 text-sm text-accent-strong sm:px-6">
-          {toast}
-        </div>
-      )}
-
       <div
         className={`stp-scroll min-h-0 flex-1 overflow-auto bg-background ${
           drag ? "select-none" : ""
@@ -623,17 +585,43 @@ export default function WeekView({
       >
         <div className="flex justify-center px-4 py-4">
           <div className="flex w-fit max-w-full flex-col">
-            <div className="flex gap-2.5">
-              {weekdayDays.map(dayIsland)}
-              <div className="w-2.5 shrink-0" aria-hidden />
-              {weekendDays.map(dayIsland)}
+            <div className="flex items-center gap-2">
+              <Link
+                href={`/planner?w=${weekOffset - 1}`}
+                className="flex h-9 w-8 shrink-0 items-center justify-center rounded-lg border border-border bg-surface text-lg text-muted shadow-sm transition hover:border-foreground/25 hover:bg-black/5 hover:text-foreground"
+                aria-label="Previous week"
+              >
+                ‹
+              </Link>
+
+              <div className="flex min-w-0 gap-2.5">
+                {weekdayDays.map(dayIsland)}
+                <div className="w-2.5 shrink-0" aria-hidden />
+                {weekendDays.map(dayIsland)}
+              </div>
+
+              <Link
+                href={`/planner?w=${weekOffset + 1}`}
+                className="flex h-9 w-8 shrink-0 items-center justify-center rounded-lg border border-border bg-surface text-lg text-muted shadow-sm transition hover:border-foreground/25 hover:bg-black/5 hover:text-foreground"
+                aria-label="Next week"
+              >
+                ›
+              </Link>
             </div>
 
+            {weekOffset !== 0 && (
+              <div className="mt-2 flex justify-center">
+                <Link
+                  href="/planner?w=0"
+                  className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium hover:bg-black/5"
+                >
+                  This week
+                </Link>
+              </div>
+            )}
+
             <div className="mt-4 w-full self-center" style={{ maxWidth: "36rem" }}>
-              <CommandBar
-                weekContext={weekContext}
-                onTimetableDraft={(d) => setDraft(d as TimetableDraft)}
-              />
+              <CommandBar weekContext={weekContext} />
 
               {showOverduePrompt && (
                 <div className="mt-2 flex items-center justify-between gap-3 px-1 py-1.5 text-xs text-muted">
@@ -691,19 +679,6 @@ export default function WeekView({
           occurrence={selected}
           tz={tz}
           onClose={() => setSelected(null)}
-        />
-      )}
-
-      {draft && (
-        <TimetableReview
-          draft={draft}
-          onClose={() => setDraft(null)}
-          onConfirmed={(count) => {
-            setDraft(null);
-            setToast(
-              `Added ${count} timetable ${count === 1 ? "entry" : "entries"}.`
-            );
-          }}
         />
       )}
     </div>

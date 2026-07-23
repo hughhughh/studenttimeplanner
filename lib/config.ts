@@ -32,6 +32,7 @@ export const ITEM_COLORS: Record<string, string> = {
   purple: "#8B5CF6",
   teal: "#14B8A6",
   pink: "#EC4899",
+  yellow: "#EAB308",
   slate: "#64748B",
 };
 

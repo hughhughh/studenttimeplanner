@@ -1,4 +1,4 @@
-import { minutesIntoDay } from "@/lib/calendar/time";
+import { minutesIntoDayOrNull } from "@/lib/calendar/time";
 
 /** Vertical scale of the week grid. */
 export const PX_PER_MIN = 0.7;
@@ -17,18 +17,21 @@ export function bodyHeight(startHour: number, endHour: number): number {
   return (endHour - startHour) * 60 * PX_PER_MIN;
 }
 
-/** Pixel top + natural (uncapped) height for a timed block. */
+/** Pixel top + natural (uncapped) height for a timed block. Invalid times → null. */
 export function blockPosition(
   startIso: string,
   endIso: string,
   tz: string,
   startHour: number,
   endHour: number
-): { top: number; height: number } {
+): { top: number; height: number } | null {
   const dayStartMin = startHour * 60;
   const dayEndMin = endHour * 60;
-  const s = clamp(minutesIntoDay(startIso, tz), dayStartMin, dayEndMin);
-  const e = clamp(minutesIntoDay(endIso, tz), dayStartMin, dayEndMin);
+  const startMin = minutesIntoDayOrNull(startIso, tz);
+  const endMin = minutesIntoDayOrNull(endIso, tz);
+  if (startMin === null || endMin === null) return null;
+  const s = clamp(startMin, dayStartMin, dayEndMin);
+  const e = clamp(endMin, dayStartMin, dayEndMin);
   const top = (s - dayStartMin) * PX_PER_MIN;
   const height = Math.max((e - s) * PX_PER_MIN, 0);
   return { top, height };
@@ -118,15 +121,16 @@ export function layoutDayBlocks<T extends Interval>(
   const placed = assignLanes(intervals);
   const dayEndY = bodyHeight(startHour, endHour);
 
-  const withGeometry = placed.map((p) => {
-    const { top, height: rawHeight } = blockPosition(
+  const withGeometry = placed.flatMap((p) => {
+    const pos = blockPosition(
       p.item.start,
       p.item.end,
       tz,
       startHour,
       endHour
     );
-    return { ...p, top, rawHeight };
+    if (!pos) return [];
+    return [{ ...p, top: pos.top, rawHeight: pos.height }];
   });
 
   const byLane = new Map<number, typeof withGeometry>();

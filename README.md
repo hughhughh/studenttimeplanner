@@ -70,7 +70,7 @@ npm test
 
 Vitest expands premade fixture items for a frozen week and asserts expected
 occurrences, statuses, grid layout, Zod validation, AI operation schemas, and
-duration updates. Current suite: **30 tests / 30 passed** across 7 files.
+duration updates. Current suite: **74 tests / 74 passed** across 14 files.
 See `/folio#testing` for the written evaluation.
 
 ## How it works

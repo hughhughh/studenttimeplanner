@@ -22,17 +22,24 @@ describe("grid layout", () => {
   it("positions a 1-hour block at 9am within 6–22 window", () => {
     const start = at("2026-07-22", "09:00");
     const end = at("2026-07-22", "10:00");
-    const { top, height } = blockPosition(start, end, TZ, 6, 22);
+    const pos = blockPosition(start, end, TZ, 6, 22);
+    expect(pos).not.toBeNull();
     // 9:00 is 3 hours after 6:00 → 180 minutes
-    expect(top).toBe(180 * PX_PER_MIN);
-    expect(height).toBe(60 * PX_PER_MIN);
+    expect(pos!.top).toBe(180 * PX_PER_MIN);
+    expect(pos!.height).toBe(60 * PX_PER_MIN);
   });
 
   it("keeps natural height for short events (min applied in layoutDayBlocks)", () => {
     const start = at("2026-07-22", "12:00");
     const end = at("2026-07-22", "12:05");
-    const { height } = blockPosition(start, end, TZ, 6, 22);
-    expect(height).toBe(5 * PX_PER_MIN);
+    const pos = blockPosition(start, end, TZ, 6, 22);
+    expect(pos).not.toBeNull();
+    expect(pos!.height).toBe(5 * PX_PER_MIN);
+  });
+
+  it("returns null for invalid datetimes instead of NaN tops", () => {
+    expect(blockPosition("", "2026-07-22T10:00:00+10:00", TZ, 6, 22)).toBeNull();
+    expect(blockPosition("not-iso", "also-bad", TZ, 6, 22)).toBeNull();
   });
 
   it("assigns overlapping intervals to different lanes", () => {

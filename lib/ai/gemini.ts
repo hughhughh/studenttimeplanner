@@ -2,11 +2,14 @@ import { GoogleGenAI } from "@google/genai";
 import type { ContentListUnion, Schema } from "@google/genai";
 
 /**
- * Gemini client — uses gemini-2.5-flash (fast, low-cost) for all AI calls.
- * Structured JSON output is validated with Zod before anything hits the DB.
+ * Gemini client — uses gemini-2.5-flash for calendar ops.
+ * Thinking is disabled (budget 0): dynamic thinking made simple creates take
+ * 20–70s and hit our timeout. Structured JSON is still Zod-validated before DB writes.
  */
 
 export const AI_MODEL = "gemini-2.5-flash";
+/** Hard cap so a stuck Gemini call can't hang the command bar forever. */
+export const GEMINI_TIMEOUT_MS = 30_000;
 
 export function geminiConfigured(): boolean {
   return Boolean(process.env.GEMINI_API_KEY);
@@ -17,6 +20,26 @@ function client(): GoogleGenAI {
     throw new Error("GEMINI_API_KEY is not set. Add it to .env.local.");
   }
   return new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+}
+
+async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(() => {
+          reject(
+            new Error(
+              "The planner took too long to respond. Please try again."
+            )
+          );
+        }, ms);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 /**
@@ -30,16 +53,21 @@ export async function generateJson(opts: {
   responseSchema: Schema;
 }): Promise<unknown> {
   const ai = client();
-  const response = await ai.models.generateContent({
-    model: AI_MODEL,
-    contents: opts.contents,
-    config: {
-      systemInstruction: opts.systemInstruction,
-      responseMimeType: "application/json",
-      responseSchema: opts.responseSchema,
-      temperature: 0.2,
-    },
-  });
+  const response = await withTimeout(
+    ai.models.generateContent({
+      model: AI_MODEL,
+      contents: opts.contents,
+      config: {
+        systemInstruction: opts.systemInstruction,
+        responseMimeType: "application/json",
+        responseSchema: opts.responseSchema,
+        temperature: 0.2,
+        // 2.5 Flash thinks by default; that made simple prompts hang for ~1 min.
+        thinkingConfig: { thinkingBudget: 0 },
+      },
+    }),
+    GEMINI_TIMEOUT_MS
+  );
 
   const text = response.text;
   if (!text) throw new Error("Empty response from the model.");

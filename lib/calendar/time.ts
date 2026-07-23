@@ -64,3 +64,83 @@ export function isValidTimeOfDay(time: string): boolean {
 export function isValidDate(date: string): boolean {
   return DateTime.fromFormat(date, ISO_DATE).isValid;
 }
+
+/**
+ * Coerce model / user time strings into strict "HH:mm".
+ * Accepts 24h and common 12h forms; returns null if unparseable.
+ */
+export function normalizeTimeOfDay(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+
+  const as24 = DateTime.fromFormat(trimmed, TIME_OF_DAY);
+  if (as24.isValid) return as24.toFormat(TIME_OF_DAY);
+
+  const withSeconds = DateTime.fromFormat(trimmed, "HH:mm:ss");
+  if (withSeconds.isValid) return withSeconds.toFormat(TIME_OF_DAY);
+
+  const cleaned = trimmed
+    .replace(/\s+/g, " ")
+    .replace(/\./g, "")
+    .toUpperCase();
+
+  for (const fmt of ["h:mm a", "h a", "ha", "h:mma", "H:mm"] as const) {
+    const dt = DateTime.fromFormat(cleaned, fmt);
+    if (dt.isValid) return dt.toFormat(TIME_OF_DAY);
+  }
+
+  return null;
+}
+
+/** Minutes since midnight, or null when the ISO string is not a real datetime. */
+export function minutesIntoDayOrNull(
+  iso: string,
+  tz: string = DEFAULT_TIMEZONE
+): number | null {
+  if (!iso) return null;
+  const dt = DateTime.fromISO(iso, { zone: tz });
+  if (!dt.isValid) return null;
+  return dt.hour * 60 + dt.minute;
+}
+
+const TIME_TOKEN =
+  String.raw`(\d{1,2}(?::\d{2})?\s*(?:[ap]\.?m\.?)?)`;
+
+/**
+ * Pull an explicit start/end range from natural language when present.
+ * Handles "from 11:55am to 12:50pm", "5 to 6:30pm", "11:55–12:50".
+ * When only one side has am/pm, that meridiem is applied to the other.
+ */
+export function extractTimeRangeFromMessage(message: string): {
+  timeStart?: string;
+  timeEnd?: string;
+} {
+  const re = new RegExp(
+    String.raw`(?:from\s+)?${TIME_TOKEN}\s*(?:to|-|–|—|till|until)\s*${TIME_TOKEN}`,
+    "i"
+  );
+  const match = message.match(re);
+  if (!match) return {};
+
+  let startRaw = match[1].trim();
+  let endRaw = match[2].trim();
+  const startMeridiem = startRaw.match(/([ap])\.?m\.?/i)?.[0];
+  const endMeridiem = endRaw.match(/([ap])\.?m\.?/i)?.[0];
+  if (endMeridiem && !startMeridiem) {
+    startRaw = `${startRaw}${endMeridiem}`;
+  } else if (startMeridiem && !endMeridiem) {
+    endRaw = `${endRaw}${startMeridiem}`;
+  }
+
+  const timeStart = normalizeTimeOfDay(startRaw) ?? undefined;
+  const timeEnd = normalizeTimeOfDay(endRaw) ?? undefined;
+  if (timeStart && timeEnd && timeStart >= timeEnd) return {};
+  return { timeStart, timeEnd };
+}
+
+/** Default end = start + 1 hour, same calendar day. */
+export function defaultEndFromStart(timeStart: string): string {
+  return DateTime.fromFormat(timeStart, TIME_OF_DAY)
+    .plus({ hours: 1 })
+    .toFormat(TIME_OF_DAY);
+}

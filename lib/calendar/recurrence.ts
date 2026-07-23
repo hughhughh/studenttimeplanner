@@ -94,6 +94,10 @@ function expandRecurring(
     const timeEnd = override?.timeEnd ?? rec.timeEnd;
     const start = dateTimeFrom(date, timeStart, item.tz);
     const end = dateTimeFrom(date, timeEnd, item.tz);
+    if (!start.isValid || !end.isValid || end <= start) continue;
+    const startIso = start.toISO();
+    const endIso = end.toISO();
+    if (!startIso || !endIso) continue;
     const completed = Boolean(override?.completed);
 
     out.push({
@@ -106,11 +110,11 @@ function expandRecurring(
       notes: override?.notes ?? item.notes,
       recurring: true,
       date,
-      start: start.toISO() ?? "",
-      end: end.toISO() ?? "",
+      start: startIso,
+      end: endIso,
       completable: item.type === "task",
       completed,
-      status: computeStatus(item.type, completed, end.toISO() ?? "", nowDt),
+      status: computeStatus(item.type, completed, endIso, nowDt),
     });
   }
   return out;

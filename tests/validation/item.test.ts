@@ -97,6 +97,23 @@ describe("itemCreateSchema", () => {
     expect(result.success).toBe(false);
   });
 
+  it("rejects an empty title", () => {
+    const result = itemCreateSchema.safeParse({
+      type: "task",
+      title: "",
+      color: "#66AA3C",
+      movable: true,
+      tz: TZ,
+      segments: [
+        {
+          start: at("2026-07-22", "19:00"),
+          end: at("2026-07-22", "20:00"),
+        },
+      ],
+    });
+    expect(result.success).toBe(false);
+  });
+
   it("rejects segment end before start", () => {
     const result = itemCreateSchema.safeParse({
       type: "task",
@@ -107,6 +124,23 @@ describe("itemCreateSchema", () => {
       segments: [
         {
           start: at("2026-07-22", "20:00"),
+          end: at("2026-07-22", "19:00"),
+        },
+      ],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects a zero-length segment (end equals start)", () => {
+    const result = itemCreateSchema.safeParse({
+      type: "task",
+      title: "X",
+      color: "#66AA3C",
+      movable: true,
+      tz: TZ,
+      segments: [
+        {
+          start: at("2026-07-22", "19:00"),
           end: at("2026-07-22", "19:00"),
         },
       ],

@@ -74,10 +74,16 @@ RULES
 - For repeating items use createItem with recurrence (freq + byWeekday). For fortnightly / Week A–B patterns use interval=2 with startDate on the correct cycle week. For one-offs use segments. A split task = ONE createItem with multiple segments.
 - Every createItem MUST include a "title" — infer it from the student's words (e.g. "workout on Friday" → title "Workout"). Sport and exercise (gym, workout, training) are usually activities (itemType=activity, movable=false).
 - If no time is given, pick a sensible default (e.g. workout ≈ 17:00–18:00, study ≈ 19:00–20:00).
+- When the student gives a time range ("from 11:55am to 12:50pm"), you MUST set BOTH timeStart and timeEnd in 24h HH:mm (11:55 and 12:50). Never invent a different end time and never omit timeEnd.
 - To skip one occurrence use skipOccurrence; to cancel a span use skipRange; to remove an entire item use deleteItem.
-- To shift several existing items use bulkShift with their itemIds and signed minutes.
+- To shift an item earlier/later ("move maths an hour forward", "push revision 30 minutes later"), use moveItem with minutes set to the signed shift (positive = later, negative = earlier). Prefer that over changing timeStart alone. Or use bulkShift with itemIds + minutes for several items. NEVER change only the start time — that stretches the item; a move keeps the same duration.
+- When setting absolute times on moveItem, always send BOTH timeStart and timeEnd (or use minutes). Sending only timeStart on moveItem keeps duration by shifting the end as well.
+- To change when something starts but keep the same end time (e.g. "assemblies should start at 12pm"), use updateItem with timeStart only (and scope=series for "always") — do not use moveItem for that.
 - To change how long an existing item lasts (e.g. "make revision 4 hours"), use updateItem with that itemId and minutes set to the NEW duration in minutes (240 for 4 hours), OR set timeStart + timeEnd. Do not send an empty updateItem.
+- Always use 24h HH:mm for times (12pm → 12:00, 12:00pm → 12:00). Never send "12pm", "noon", or seconds.
 - AVOID DUPLICATES: if the student asks for something that already exists, do not recreate it.
 - If the request is ambiguous, impossible, references something that doesn't exist, or is missing required detail, return ONLY a "clarification" string and no operations.
-- Always include a short, friendly "summary" of what you did when you return operations.`;
+- Always include a short, friendly "summary" of what you did when you return operations.
+- If the student says "undo" / "undo the last change", that is handled by the app (session undo) — do not invent reverse operations yourself.
+- If the student says "redo", that is also handled by the app — do not invent operations yourself.`;
 }

@@ -9,6 +9,7 @@ import {
   type CycleWeek,
 } from "@/lib/calendar/cycle";
 import { WEEK_CYCLE_CONCEPT, STUDY_PERIOD_CONCEPT } from "@/lib/scheduling/concepts";
+import { colorForSubjectTitle, normalizeSubjectKey } from "@/lib/calendar/subjectColor";
 
 /**
  * Timetable image parsing. Gemini reads the photo and returns subject blocks;
@@ -120,7 +121,6 @@ export interface TimetableDraft {
   warnings: string[];
 }
 
-const PALETTE = Object.values(ITEM_COLORS);
 const STUDY_PERIOD_COLOR = ITEM_COLORS.slate;
 
 function resolveRecurrence(
@@ -204,8 +204,10 @@ export async function parseTimetableImage(opts: {
   }
 
   const items: ItemCreateInput[] = [];
+  /** Same subject title → same colour across every period block. */
+  const colorBySubject = new Map<string, string>();
 
-  (parsed.data.subjects ?? []).forEach((subject, index) => {
+  (parsed.data.subjects ?? []).forEach((subject) => {
     const recurrence = resolveRecurrence(subject, {
       timetableType,
       startDate: opts.startDate,
@@ -219,10 +221,18 @@ export async function parseTimetableImage(opts: {
     }
 
     const isStudy = Boolean(subject.isStudyPeriod);
+    const title = subject.title.trim();
+    const key = normalizeSubjectKey(title) || title.toLowerCase();
+    let color = colorBySubject.get(key);
+    if (!color) {
+      color = isStudy ? STUDY_PERIOD_COLOR : colorForSubjectTitle(title);
+      colorBySubject.set(key, color);
+    }
+
     const candidate = {
       type: "activity" as const,
-      title: subject.title.trim(),
-      color: isStudy ? STUDY_PERIOD_COLOR : PALETTE[index % PALETTE.length],
+      title,
+      color,
       movable: false,
       schedulingRole: isStudy ? ("study_period" as const) : undefined,
       tz: opts.tz,

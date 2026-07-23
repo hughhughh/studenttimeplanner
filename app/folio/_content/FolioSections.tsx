@@ -1,8 +1,9 @@
-import MermaidDiagram from "@/app/folio/_components/MermaidDiagram";
 import NesaDfd from "@/app/folio/_components/NesaDfd";
 import StoryboardDiagram from "@/app/folio/_components/StoryboardDiagram";
 import ClassDiagram from "@/app/folio/_components/ClassDiagram";
 import ErDiagram from "@/app/folio/_components/ErDiagram";
+import GanttChart from "@/app/folio/_components/GanttChart";
+import { GANTT_TASKS } from "@/app/folio/_content/ganttTasks";
 import { FolioSection, FolioTable, Pseudo } from "@/app/folio/_components/FolioUi";
 
 export default function FolioSections() {
@@ -100,7 +101,7 @@ export default function FolioSections() {
             ],
             [
               "Performance",
-              "Week expansion happens in memory from fetched items; AI apply is all-or-nothing to avoid half-updated calendars; images processed only on upload.",
+              "Week expansion is in-memory for the visible week only (not full history). Target: cold week render under ~2s on a school laptop; AI round-trip under ~8s for a typical prompt; npm test suite under ~5s. Images processed only on upload; AI apply is all-or-nothing so failed batches do not leave partial writes.",
             ],
             [
               "Usability",
@@ -476,17 +477,20 @@ export default function FolioSections() {
           are treated as locked.
         </p>
         <p>
-          A useful case study is the classic UK government and large enterprise
-          programmes of the 1990s–2000s that adopted Waterfall-like stage gates
-          (and later public inquiries into delayed IT). Those projects were
-          large in team size and budget, with many stakeholders and fixed
-          contracts. The workflow matched procurement: sign off a specification,
-          then build to it. For Student Time Planner, that pattern is a poor fit.
-          The product is small in team size (one developer) but uncertain in
-          behaviour: Gemini may invent item ids, recurrence edge cases appear
-          only when expanding a real week, and timetable photos vary by school.
-          Locking a complete design before those discoveries would waste time
-          rewriting “finished” documents instead of tightening validation code.
+          <strong>Case study — UK government / NHS-scale IT (Waterfall-like
+          stage gates):</strong> programmes in the 1990s–2000s often ran at
+          large scale — hundreds of staff, multi-year budgets, many agency
+          stakeholders, and fixed procurement contracts. The workflow matched
+          that scale: a signed specification, then gated design, build, and late
+          UAT. Public inquiries into delayed health and benefits systems showed
+          the cost of discovering wrong assumptions only after “requirements
+          complete.” For Student Time Planner that pattern is a poor fit. Scale
+          here is one developer and one product, not a multi-vendor programme.
+          Behaviour is uncertain: Gemini may invent item ids, recurrence edge
+          cases appear only when expanding a real week, and timetable photos
+          vary by school. Locking a complete design before those discoveries
+          would waste time rewriting “finished” documents instead of tightening
+          validation code — the opposite of what Waterfall stage gates assume.
         </p>
 
         <h3 className="font-serif text-lg font-semibold">Agile</h3>
@@ -500,17 +504,19 @@ export default function FolioSections() {
           tests grow alongside features.
         </p>
         <p>
-          Industry examples are well known. Spotify’s squad model popularised
-          autonomous teams owning a slice of the product with frequent releases.
-          Many modern web products (from early Dropbox/Slack-style startups to
-          continuous-delivery SaaS firms) use sprint or kanban loops so customer
-          feedback arrives while the design is still malleable. For this
-          planner, Agile’s strengths matched the technical risk: ship auth, then
-          a week view, then AI operations, then timetable import — each slice
-          usable. The weakness is documentary: pure Agile can leave DFDs,
-          algorithms, and requirement tables thin even when the app works. For a
-          Year 12 Software Engineering folio, that weakness matters — markers
-          need evidence of planning and design, not only commits.
+          <strong>Case study — Spotify’s squad model (Agile at product
+          scale):</strong> engineering was organised into small cross-functional
+          squads (often under ten people) that owned a vertical slice of the
+          product and released frequently. Scale was medium-to-large overall
+          (many squads), but each squad’s workflow stayed local: backlog → short
+          build → live feedback, without waiting for a company-wide design freeze.
+          That workflow matches the technical risk of this planner — ship auth,
+          then a week view, then AI operations, then timetable import — each
+          slice usable. The weakness for Year 12 is documentary: pure Agile can
+          leave DFDs, algorithms, and requirement tables thin even when the app
+          works. Markers need evidence of planning and design, not only commits,
+          so “Agile alone” would under-serve the folio even if it served the
+          code.
         </p>
 
         <h3 className="font-serif text-lg font-semibold">WAgile</h3>
@@ -527,17 +533,20 @@ export default function FolioSections() {
           retrospective fixes.
         </p>
         <p>
-          Hybrids like this appear in industry whenever regulated or assessed
-          work must meet a deadline yet still absorb discovery — for example
-          product teams inside banks that keep an architecture decision record
-          and release train, or student/industry projects that must submit
-          design packs alongside demos. The comparison on scale is therefore:
-          Waterfall for large stable contracts; Agile for continuous product
-          evolution with light ceremony; WAgile for small teams with a hard
-          deadline and a required design artefact set. Student Time Planner —
-          one developer, feature-rich surface (auth, calendar math, LLM tooling,
-          image import), fixed Term 3 submission — sits squarely in the WAgile
-          band.
+          <strong>Case study — bank / regulated product teams (hybrid
+          delivery):</strong> many financial-product squads keep a written
+          architecture decision record and release train (Waterfall-like spine
+          for audit) while still shipping fortnightly increments (Agile
+          workflow). Scale is larger than a school project but the constraint is
+          similar: a hard external deadline plus mandatory design artefacts.
+          Student/industry assessed projects that must submit design packs
+          alongside demos follow the same hybrid. The comparison on scale is
+          therefore: Waterfall for large stable contracts; Agile for continuous
+          product evolution with light ceremony; WAgile for small teams with a
+          hard deadline and a required design artefact set. Student Time Planner
+          — one developer, feature-rich surface (auth, calendar math, LLM
+          tooling, image import), fixed Term 3 submission — sits squarely in the
+          WAgile band.
         </p>
 
         <h3 className="font-serif text-lg font-semibold">
@@ -578,101 +587,91 @@ export default function FolioSections() {
 
       <FolioSection id="gantt" title="Project management — Gantt chart">
         <p>
-          Planned phases with dependencies. Calendar and AI work overlapped;
+          Planned vs completed work across the assessment window (26 Feb –
+          24 Jul 2026), aligned to the Term 3 project checklist. Yellow =
+          scheduled (planned), blue = completed (actual), green = scheduled
+          and completed on that day. Calendar and AI work overlapped;
           documentation and automated tests concentrated near the end of the
           build.
         </p>
-        <MermaidDiagram
-          caption="Figure 5 — Gantt chart of planned schedule"
-          chart={`
-gantt
-  title Student Time Planner schedule
-  dateFormat  YYYY-MM-DD
-  axisFormat  %d %b
-  section Init
-  Problem and overview           :a1, 2026-06-30, 7d
-  Repo and stack setup           :a2, after a1, 3d
-  section Design
-  Data model and requirements    :b1, 2026-07-05, 5d
-  Week-view storyboard           :b2, after b1, 3d
-  section Build
-  Items and expansion            :c1, 2026-07-08, 7d
-  Week view UI                   :c2, after c1, 5d
-  Auth email codes               :c3, 2026-07-12, 5d
-  section AI
-  Gemini ops pipeline            :d1, 2026-07-15, 6d
-  Timetable image review         :d2, after d1, 4d
-  section Close
-  Automated test suite           :e1, 2026-07-21, 2d
-  Folio documentation            :e2, 2026-07-21, 3d
-  Packaging and hand-off         :e3, 2026-07-23, 2d
-`}
-        />
+        <GanttChart tasks={GANTT_TASKS} />
         <p>
-          Critical path: items model → expansion → week UI → AI apply. Auth can
-          proceed in parallel once the data layer exists. Folio and tests depend
-          on a stable domain model so expected outputs can be asserted.
+          The completed marks show an uneven delivery rhythm rather than a
+          steady build. Early planning sat ahead of implementation; a first
+          coding burst in May did not settle into a working product, so the
+          approach paused instead of forcing a fragile structure further. On
+          30 June the project restarted from a clean repository, which clarified
+          the stack and domain model but also compressed the remaining calendar
+          into a shorter window. A more even weekly cadence — smaller slices,
+          earlier vertical demos, documentation alongside coding — would have
+          reduced that late-stage pressure while still allowing the same WAgile
+          spine of plan, build, and evaluate.
         </p>
       </FolioSection>
 
       <FolioSection id="diary" title="Project diary">
+        <p>
+          Entries follow the Gantt coding days (completed marks) and the Git
+          history in two repositories: an early attempt (
+          <a
+            href="https://github.com/hughhughh/bigproject/commits/main/"
+            target="_blank"
+            rel="noreferrer"
+          >
+            hughhughh/bigproject
+          </a>
+          ), then a clean restart in this repo (
+          <a
+            href="https://github.com/hughhughh/studenttimeplanner"
+            target="_blank"
+            rel="noreferrer"
+          >
+            hughhughh/studenttimeplanner
+          </a>
+          ) from 30 June 2026.
+        </p>
         <FolioTable
           headers={["Date", "Description", "Challenges / milestones"]}
           rows={[
             [
+              "26–27-02-26",
+              "Started project planning against the Term 3 checklist: first Gantt draft, problem definition, functional / non-functional requirements sketch, and an early storyboard direction.",
+              "Milestone: assessment window opened; problem and schedule spine begun before any serious coding.",
+            ],
+            [
+              "24 & 29-04-26",
+              "Returned to documentation: tightened functional and non-functional requirements and revisited the storyboard / problem write-up so the folio checklist items were clearer before implementation.",
+              "Challenge: keeping requirements honest to a week-view planner rather than a generic CRUD app.",
+            ],
+            [
+              "07-05-26",
+              "First coding push in the old repository (bigproject). Scaffolded Next.js (6581902), added initial docs (eb32dd1), then committed a general app structure that was not yet working (49d5996 — “Not Working - but general structure”).",
+              "Milestone: repository created. Challenge: structure existed on paper/in files but the product path was unclear and the build was not usable.",
+            ],
+            [
+              "08–13-05-26",
+              "Continued coding sessions on the early attempt (Gantt: solution implementation / testing days marked done). Tried to push the incomplete structure toward a working planner without a clear domain model.",
+              "Challenge: progress stalled — the codebase was not heading toward a maintainable week view + AI design. Decision forming: pause and restart cleanly later.",
+            ],
+            [
+              "14-05-26 → 29-06-26",
+              "Pause on active coding. Focus shifted away from the broken first attempt; planning notes and checklist items remained, but no further commits landed on bigproject.",
+              "Decision: abandon the tangled early structure rather than keep patching it.",
+            ],
+            [
               "30-06-26",
-              "Created the Next.js repository (commit 2fac498). Drafted the project overview: week view, AI command bar, timetable photo import, immovable school blocks.",
-              "Milestone: repository created. Decision: TypeScript + Next.js + MongoDB (teacher-approved stack).",
-            ],
-            [
-              "02-07-26",
-              "Wrote domain rules in the overview (tasks vs activities, validate-before-write, Australia/Sydney). Sketched FR/NFR list for the folio spine.",
-              "WAgile spine started: problem and constraints locked before deep coding.",
-            ],
-            [
-              "05-07-26",
-              "Chose MongoDB document shape for Item / Segment / Recurrence. Added Zod schemas as the single validation source.",
-              "Decision: document store fits flexible recurrence, exceptions, and overrides better than a rigid SQL layout for this prototype.",
-            ],
-            [
-              "08-07-26",
-              "Implemented expandWeek / expandItem: weekday series, exceptions, fortnightly interval, split sessions.",
-              "Challenge: split sessions must share one logical card — solved with shared item id + segment keys.",
-            ],
-            [
-              "10-07-26",
-              "Built week grid UI: day columns, working-hour scaling, now-indicator, complete checkbox, delete, item modal.",
-              "Milestone: first usable vertical slice (data → visible week).",
-            ],
-            [
-              "12-07-26",
-              "Added passwordless auth: Resend email codes, jose JWT cookie, proxy gate, demo login for offline demos.",
-              "Challenge: email optional in development — codes logged to console when RESEND_API_KEY unset.",
-            ],
-            [
-              "15-07-26",
-              "Wired Gemini command bar: prompt context, operation schema, apply planner.",
-              "Challenge: model hallucinating item ids and half-valid batches — introduced full validation before any write.",
-            ],
-            [
-              "17-07-26",
-              "Hardened AI apply: immovable enforcement, all-or-nothing batches, clarification path when ops are empty.",
-              "Decision: fail closed on bad AI output rather than partial calendar corruption.",
-            ],
-            [
-              "19-07-26",
-              "Timetable image route + TimetableReview confirm-before-save creating fixed weekly activities.",
-              "Milestone: photo → review → immovable week path works. Adapted plan to keep human review mandatory.",
-            ],
-            [
-              "21-07-26",
-              "Grew Vitest suite for recurrence, status, grid, cycle, Zod, and AI schemas. Started public folio site structure.",
-              "Challenge: keeping tests free of API keys so the teacher can run npm test offline.",
+              "Restarted coding from scratch in a new repository (studenttimeplanner). Fresh Create Next App scaffold committed as 2fac498. Chose to rebuild with a clearer stack and domain rules (TypeScript, Next.js, MongoDB, Resend, Gemini) instead of continuing bigproject.",
+              "Milestone: clean restart. Old history retained at github.com/hughhughh/bigproject for evidence of the first attempt.",
             ],
             [
               "22-07-26",
-              "Fixed duration updates on existing items (minutes / end time). Logged regression case 12.1. Expanded folio (activity diagram, approach, finance, diary) and AI apply integration tests.",
-              "Milestone: npm test green including integration apply path; folio content aligned to marking criteria.",
+              "Major delivery day on the restarted repo. Committed the folio documentation site (1ad8e33), calendar UX/grid improvements (5acaf6b), and further UI polish (01ee90f). Brought checklist artefacts (Gantt planned vs actual, diary, diagrams) in line with the working planner.",
+              "Milestone: public /folio plus usable week-view UX; Gantt shows planned vs completed tracking for the assessment window.",
+            ],
+            [
+              "23-07-26",
+              "Closed out remaining folio / evaluation checklist work marked on the Gantt (documentation polish, scheduled-vs-done chart colours, diary aligned to real commits).",
+              "Milestone: diary and version sequence now match both repositories and the Gantt coding days.",
             ],
           ]}
         />
@@ -949,74 +948,90 @@ END HandleTimetableImport`}
 
       <FolioSection id="versions" title="Version sequence / code backup">
         <p>
-          Source control is <strong>Git</strong>. The initial scaffold is
-          committed locally; feature work was developed as dated milestones
-          (table below) with the working tree backed up via the project folder
-          and prepared for a submission zip / remote push. Each row records what
-          changed and when, matching the project diary.
+          Source control is <strong>Git</strong> across two repositories. The
+          first attempt lives at{" "}
+          <a
+            href="https://github.com/hughhughh/bigproject/commits/main/"
+            target="_blank"
+            rel="noreferrer"
+          >
+            hughhughh/bigproject
+          </a>{" "}
+          (May 2026). Active delivery continues in{" "}
+          <a
+            href="https://github.com/hughhughh/studenttimeplanner"
+            target="_blank"
+            rel="noreferrer"
+          >
+            hughhughh/studenttimeplanner
+          </a>{" "}
+          from the 30 June restart. Rows below are real commits (not invented
+          daily checkpoints).
         </p>
         <FolioTable
-          headers={["Version", "Date / time", "Commit / backup note"]}
+          headers={["Version", "Date", "Commit / backup note"]}
           rows={[
             [
-              "v0.1 Scaffold",
-              "30-06-26 11:28",
-              "2fac498 — Initial commit from Create Next App",
+              "v0.1a — Early scaffold (old repo)",
+              "07-05-26",
+              "bigproject 6581902 — Initial commit from Create Next App",
             ],
             [
-              "v0.2 Domain model",
-              "05-07-26",
-              "Checkpoint — Item/Segment/Recurrence types + Zod item schemas (lib/types, lib/validation)",
+              "v0.1b — Early docs (old repo)",
+              "07-05-26",
+              "bigproject eb32dd1 — Initial docs",
             ],
             [
-              "v0.3 Calendar core",
-              "08-07-26",
-              "Checkpoint — expandWeek, exceptions, split sessions, fortnightly interval",
+              "v0.1c — Broken structure (old repo)",
+              "07-05-26",
+              "bigproject 49d5996 — “Not Working - but general structure” (paused after further May coding sessions)",
             ],
             [
-              "v0.4 Week UI",
-              "10-07-26",
-              "Checkpoint — DayColumn, NowIndicator, ItemCard, ItemModal week grid",
+              "v0.2 — Clean restart (current repo)",
+              "30-06-26",
+              "studenttimeplanner 2fac498 — Initial commit from Create Next App (restart decision)",
             ],
             [
-              "v0.5 Auth",
-              "12-07-26",
-              "Checkpoint — email codes, jose session cookie, proxy gate, demo login",
-            ],
-            [
-              "v0.6 AI pipeline",
-              "17-07-26",
-              "Checkpoint — Gemini ops, Zod validation, all-or-nothing apply, command bar",
-            ],
-            [
-              "v0.7 Timetable import",
-              "19-07-26",
-              "Checkpoint — image extract API + TimetableReview confirm-before-save",
-            ],
-            [
-              "v0.8 Tests + folio",
+              "v0.3 — Folio + planner body",
               "22-07-26",
-              "Checkpoint — Vitest unit + AI apply integration; public /folio; duration updateItem fix",
+              "1ad8e33 — Folio (documentation site and core planner components landed in history)",
+            ],
+            [
+              "v0.4 — Calendar UX",
+              "22-07-26",
+              "5acaf6b — Change to ux on calendar (week grid / day column behaviour)",
+            ],
+            [
+              "v0.5 — UI polish",
+              "22-07-26",
+              "01ee90f — UI change (home/planner presentation and related components)",
             ],
           ]}
         />
         <p>
-          Backup procedure: keep the Git history; export a zip of the repository
-          for Schoolbox; do not commit secrets (<code>.env.local</code> stays
-          local). Before final hand-off, batch-commit remaining checkpoints so
-          the teacher can inspect history on their laptop.
+          Backup procedure: keep both Git remotes as evidence of the restart;
+          export a zip of <code>studenttimeplanner</code> for Schoolbox; do not
+          commit secrets (<code>.env.local</code> stays local). Teachers can
+          inspect commit history on their laptop via the links above.
         </p>
       </FolioSection>
 
       <FolioSection id="prototyping" title="Prototyping sequence">
         <p>
-          Prototyping moved from typed domain models to vertical UI slices rather
-          than disposable throwaway screens.
+          Prototyping moved from a hand-drawn week wireframe to vertical slices
+          (data model → auth → week UI → AI → timetable), rather than disposable
+          throwaway screens. The folio template asks for{" "}
+          <strong>backend screenshots</strong> and{" "}
+          <strong>front-end screenshots</strong> — it does not fix a count — so
+          the figures below show the early wireframe, live front-end surfaces,
+          and automated backend test output as evidence of the implemented
+          prototype.
         </p>
         <ol className="list-decimal space-y-2 pl-5">
           <li>
             <strong>Backend / data prototype:</strong> Mongo item documents with
-            segments vs recurrence; seed script builds a realistic demo week.
+            segments vs recurrence; <code>npm run seed</code> builds a realistic
+            demo week; Vitest proves calendar/AI behaviour without a browser.
           </li>
           <li>
             <strong>Week view prototype:</strong> seven day columns, working-hour
@@ -1035,37 +1050,90 @@ END HandleTimetableImport`}
             table → confirm creates immovable weekly activities.
           </li>
         </ol>
-        <div className="mt-6 grid gap-4 sm:grid-cols-2">
-          {[
-            {
-              title: "Week view",
-              body: "Primary planner surface with day columns and command bar.",
-            },
-            {
-              title: "Login",
-              body: "Email code + demo CTA at /login.",
-            },
-            {
-              title: "Command bar",
-              body: "Natural-language entry under the week grid.",
-            },
-            {
-              title: "Timetable review",
-              body: "Confirm-before-save after image upload.",
-            },
-          ].map((card) => (
-            <div
-              key={card.title}
-              className="rounded-xl border border-dashed border-border bg-surface-muted/50 p-4"
-            >
-              <p className="text-sm font-semibold">{card.title}</p>
-              <p className="mt-1 text-xs text-muted">{card.body}</p>
-              <div className="mt-3 flex h-28 items-center justify-center rounded-lg bg-white text-xs text-muted">
-                Screenshot slot
-              </div>
-            </div>
-          ))}
+
+        <h3 className="font-serif text-lg font-semibold">
+          Front-end screenshots
+        </h3>
+        <figure className="mt-4 overflow-hidden rounded-xl border border-border bg-surface-muted/40">
+          <img
+            src="/folio/week-view-storyboard.png"
+            alt="Hand-drawn week view storyboard: seven day columns Mon–Sun, completed tasks marked green with checkmarks, incomplete tasks with open/close controls, today column outlined with a now-indicator, and a command bar at the bottom reading Add tasks, edit calendar."
+            className="mx-auto max-h-[28rem] w-full object-contain bg-white p-3"
+          />
+          <figcaption className="border-t border-border px-4 py-3 text-center text-xs text-muted">
+            Figure F1 — Early front-end wireframe: day columns, completed vs
+            incomplete tasks, now-indicator on today, and the natural-language
+            command bar under the grid.
+          </figcaption>
+        </figure>
+        <div className="mt-4 grid gap-4 md:grid-cols-2">
+          <figure className="overflow-hidden rounded-xl border border-border bg-surface-muted/40">
+            <img
+              src="/folio/home-landing.png"
+              alt="Student Time Planner landing page with headline Stop planning your week. Just follow it., Open my planner and Continue as guest buttons, and three feature cards."
+              className="mx-auto max-h-72 w-full object-contain object-top bg-white"
+            />
+            <figcaption className="border-t border-border px-3 py-2 text-center text-xs text-muted">
+              Figure F2 — Landing page (marketing → product entry).
+            </figcaption>
+          </figure>
+          <figure className="overflow-hidden rounded-xl border border-border bg-surface-muted/40">
+            <img
+              src="/folio/login.png"
+              alt="Sign-in screen with email field, Send me a code button, and Continue as guest option."
+              className="mx-auto max-h-72 w-full object-contain object-top bg-white"
+            />
+            <figcaption className="border-t border-border px-3 py-2 text-center text-xs text-muted">
+              Figure F3 — Auth prototype: one-time email code or guest path.
+            </figcaption>
+          </figure>
         </div>
+        <figure className="mt-4 overflow-hidden rounded-xl border border-border bg-surface-muted/40">
+          <img
+            src="/folio/planner-week.png"
+            alt="Live week view for 20–26 Jul 2026: seven day columns with school subject blocks, Thursday highlighted with a now-indicator at 7:56, hours range 8:00–22:00, and the command bar at the bottom reading add tasks, edit calendar."
+            className="mx-auto max-h-[32rem] w-full object-contain object-top bg-white"
+          />
+          <figcaption className="border-t border-border px-4 py-3 text-center text-xs text-muted">
+            Figure F4 — Live week view (implemented UI): Mon–Sun grid with subject
+            blocks, working-hour window, today badge + now-indicator, and the
+            natural-language command bar.
+          </figcaption>
+        </figure>
+        <p className="text-sm text-muted">
+          Optional extras if time allows: an AI clarification reply and the
+          timetable review table before confirm — drop PNGs into{" "}
+          <code>public/folio/</code> and they can be captioned the same way.
+        </p>
+
+        <h3 className="mt-6 font-serif text-lg font-semibold">
+          Backend screenshots
+        </h3>
+        <figure className="mt-4 overflow-hidden rounded-xl border border-border bg-surface-muted/40">
+          <img
+            src="/folio/npm-test-run.png"
+            alt="Terminal output of npm test showing 14 test files and 74 tests all passed."
+            className="mx-auto max-h-[28rem] w-full object-contain bg-zinc-950 p-2"
+          />
+          <figcaption className="border-t border-border px-4 py-3 text-center text-xs text-muted">
+            Figure B1 — Backend / automation prototype evidence:{" "}
+            <code>npm test</code> run (14 files, 74 tests passed) covering
+            recurrence, status, Zod validation, and AI apply integration with
+            mocked persistence.
+          </figcaption>
+        </figure>
+        <figure className="mt-4 overflow-hidden rounded-xl border border-border bg-surface-muted/40">
+          <img
+            src="/folio/folio-overview.png"
+            alt="Assessment folio page showing documentation sections and diagrams for the software engineering project."
+            className="mx-auto max-h-80 w-full object-contain object-top bg-white"
+          />
+          <figcaption className="border-t border-border px-4 py-3 text-center text-xs text-muted">
+            Figure B2 — Documentation surface served by the same Next.js app (
+            <code>/folio</code>), including data-design diagrams that mirror the
+            Mongo collections used by the API.
+          </figcaption>
+        </figure>
       </FolioSection>
 
       <FolioSection id="testing" title="Automated testing, optimisation & evaluation">
@@ -1082,15 +1150,16 @@ END HandleTimetableImport`}
         <Pseudo>{`npm install
 npm test`}</Pseudo>
         <p>
-          <strong>Result to record for evidence:</strong> the suite reports all
-          tests passed across unit and integration files (100% of the automated
-          suite). Example output shape:
+          <strong>Result recorded for evidence (23 Jul 2026):</strong> the suite
+          reports all tests passed across unit and integration files.
         </p>
-        <Pseudo>{`Test Files  8 passed (8)
-     Tests  35 passed (35)`}</Pseudo>
+        <Pseudo>{`Test Files  14 passed (14)
+     Tests  74 passed (74)
+   Duration  ~1.1s`}</Pseudo>
         <p>
           Use <code>npm run test:watch</code> during development.{" "}
-          <code>npm test</code> runs once and exits (suitable for demos).
+          <code>npm test</code> runs once and exits (suitable for demos). A
+          screenshot of this run is in Prototyping (Figure B1).
         </p>
         <h3 className="font-serif text-lg font-semibold">
           Unit testing coverage
@@ -1110,8 +1179,8 @@ npm test`}</Pseudo>
             ],
             [
               "tests/calendar/grid.test.ts",
-              "4",
-              "blockPosition heights; overlapping lane assignment",
+              "10",
+              "blockPosition heights; overlapping lane assignment; clamp to working hours",
             ],
             [
               "tests/calendar/cycle.test.ts",
@@ -1120,18 +1189,43 @@ npm test`}</Pseudo>
             ],
             [
               "tests/validation/item.test.ts",
-              "6",
-              "Zod accepts valid creates; rejects illegal shapes",
+              "8",
+              "Zod accepts valid creates; rejects illegal shapes and boundaries",
             ],
             [
               "tests/ai/operations.test.ts",
-              "5",
+              "7",
               "AI response/operation schema rejects malformed ops",
             ],
             [
-              "tests/ai/updateDuration.test.ts",
-              "2",
-              "Duration update on an existing item; empty update still rejected",
+              "tests/ai/bulkColor.test.ts",
+              "7",
+              "Bulk colour updates; invalid hex rejected",
+            ],
+            [
+              "tests/ai/createTimeRange.test.ts",
+              "8",
+              "Create with explicit start/end ranges and noon defaults",
+            ],
+            [
+              "tests/ai/assemblyStartAtNoon.test.ts",
+              "3",
+              "Assembly / vague morning phrasing resolves to noon start",
+            ],
+            [
+              "tests/ai/movePreserveDuration.test.ts",
+              "4",
+              "Move keeps duration unless end is explicitly changed",
+            ],
+            [
+              "tests/ai/undo.test.ts",
+              "5",
+              "Undo snapshot detect / apply restore paths",
+            ],
+            [
+              "tests/gantt/parse.test.ts",
+              "1",
+              "Gantt date helpers for folio chart",
             ],
           ]}
         />
@@ -1149,18 +1243,18 @@ npm test`}</Pseudo>
           rows={[
             [
               "tests/ai/applyIntegration.test.ts",
-              "5",
+              "6",
               "Valid create writes; mixed valid+invalid batch writes nothing; immovable school not bulk-shifted; delete; clarification with empty ops",
             ],
             [
               "tests/ai/updateDuration.test.ts",
-              "(shared)",
-              "Also integration-style: applyAiResponse → updateItem patch for duration resize",
+              "2",
+              "applyAiResponse → updateItem patch for duration resize; empty update still rejected",
             ],
           ]}
         />
         <h3 className="font-serif text-lg font-semibold">
-          Sample expected vs actual
+          Sample expected vs actual (including boundaries)
         </h3>
         <FolioTable
           headers={["Test case", "Input (fixture)", "Expected", "Actual"]}
@@ -1196,10 +1290,34 @@ npm test`}</Pseudo>
               "Pass (integration)",
             ],
             [
-              "Invalid item",
+              "Invalid item (boundary)",
               "Both segments and recurrence set",
               "Zod failure",
               "Pass (unit)",
+            ],
+            [
+              "Empty title (boundary)",
+              "title = \"\"",
+              "Zod rejection; no write",
+              "Pass (unit)",
+            ],
+            [
+              "Colour regex (boundary)",
+              "color = \"green\" (not #RRGGBB)",
+              "Zod rejection",
+              "Pass (unit / bulkColour)",
+            ],
+            [
+              "Zero-length block (boundary)",
+              "segmentEnd = segmentStart",
+              "Rejected (end must be after start)",
+              "Pass (unit)",
+            ],
+            [
+              "Immovable bulk shift (boundary)",
+              "bulkShift school activity without explicit allow",
+              "No write; error surfaced",
+              "Pass (integration)",
             ],
           ]}
         />
@@ -1219,6 +1337,51 @@ npm test`}</Pseudo>
           <li>
             Reject unknown item ids early so Gemini hallucinations never touch
             storage.
+          </li>
+          <li>
+            Automated suite runs in ~1s locally, so regressions are cheap to
+            catch on every change.
+          </li>
+        </ul>
+        <h3 className="font-serif text-lg font-semibold">
+          Performance and accessibility checks
+        </h3>
+        <p>
+          Assessment resources list{" "}
+          <a
+            href="https://pagespeed.web.dev/"
+            target="_blank"
+            rel="noreferrer"
+          >
+            PageSpeed Insights
+          </a>{" "}
+          and the{" "}
+          <a
+            href="https://www.w3.org/WAI/test-evaluate/tools/list/"
+            target="_blank"
+            rel="noreferrer"
+          >
+            W3C WAI evaluation tools list
+          </a>
+          . For this project:
+        </p>
+        <ul className="list-disc space-y-2 pl-5">
+          <li>
+            <strong>PageSpeed / local feel:</strong> the planner is a thin
+            React week grid over a small Mongo payload. Measured locally,{" "}
+            <code>npm test</code> is ~1s; cold{" "}
+            <code>/login</code> and <code>/</code> render immediately in
+            headless Chrome capture. Production PageSpeed on a deployed URL can
+            be pasted here after hosting — target: performance score ≥ 80 on
+            mobile for the landing page.
+          </li>
+          <li>
+            <strong>Accessibility:</strong> semantic headings on folio and
+            planner chrome; colour is not the only cue for completed (checkmark)
+            vs overdue (label + orange); keyboard reaches login fields and
+            primary buttons. Remaining gap: deeper screen-reader labels on the
+            command bar and item modal — noted for future polish rather than
+            claimed complete.
           </li>
         </ul>
         <h3 className="font-serif text-lg font-semibold">
@@ -1253,11 +1416,13 @@ npm test`}</Pseudo>
         <p>
           Against the functional requirements: FR1–FR9 are implemented in the
           running app; FR10 is this folio. Automated unit and integration tests
-          give regression evidence for recurrence, status, validation, duration
-          updates, and safe AI apply (FR3, FR6, FR8, FR9). Remaining risks
-          include Gemini variability on poor timetable photos — mitigated by the
-          review UI and Zod layer — and free-tier email limits in production,
-          mitigated by the demo login path for marking.
+          (74 cases) give regression evidence for recurrence, status,
+          validation, duration updates, undo, and safe AI apply (FR3, FR6, FR8,
+          FR9). Remaining risks include Gemini variability on poor timetable
+          photos — mitigated by the review UI and Zod layer — and free-tier
+          email limits in production, mitigated by the demo login path for
+          marking. UI/E2E browser automation is not yet in the suite; critical
+          paths are covered at the domain and apply-pipeline layers instead.
         </p>
       </FolioSection>
     </>

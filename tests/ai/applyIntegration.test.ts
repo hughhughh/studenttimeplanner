@@ -115,9 +115,13 @@ describe("AI apply integration (validate → write)", () => {
             timeEnd: "17:00",
           },
           {
-            type: "updateItem",
-            itemId: "does-not-exist",
-            title: "Ghost",
+            type: "createItem",
+            itemType: "task",
+            title: "Broken",
+            movable: true,
+            date: "2026-07-22",
+            timeStart: "18:00",
+            timeEnd: "17:00", // end before start
           },
         ],
       },
@@ -127,6 +131,35 @@ describe("AI apply integration (validate → write)", () => {
     expect(result.ok).toBe(false);
     expect(createManyItems).not.toHaveBeenCalled();
     expect(updateItem).not.toHaveBeenCalled();
+  });
+
+  it("skips stale update itemIds and still applies valid creates", async () => {
+    const result = await applyAiResponse(
+      "test-user",
+      {
+        operations: [
+          {
+            type: "createItem",
+            itemType: "task",
+            title: "Valid task",
+            movable: true,
+            date: "2026-07-22",
+            timeStart: "16:00",
+            timeEnd: "17:00",
+          },
+          {
+            type: "updateItem",
+            itemId: "does-not-exist",
+            title: "Ghost",
+          },
+        ],
+      },
+      { tz: TZ, todayIso: "2026-07-22" }
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.missingSkipped).toBe(1);
+    expect(createManyItems).toHaveBeenCalledTimes(1);
   });
 
   it("does not shift an immovable school series without explicit intent", async () => {
