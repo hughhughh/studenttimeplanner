@@ -1371,9 +1371,17 @@ npm test`}</Pseudo>
             React week grid over a small Mongo payload. Measured locally,{" "}
             <code>npm test</code> is ~1s; cold{" "}
             <code>/login</code> and <code>/</code> render immediately in
-            headless Chrome capture. Production PageSpeed on a deployed URL can
-            be pasted here after hosting — target: performance score ≥ 80 on
-            mobile for the landing page.
+            headless Chrome capture. Drop a PageSpeed Insights screenshot at{" "}
+            <code>public/folio/pagespeed.png</code> after you run{" "}
+            <a
+              href="https://pagespeed.web.dev/"
+              target="_blank"
+              rel="noreferrer"
+            >
+              pagespeed.web.dev
+            </a>{" "}
+            on the deployed (or tunnelled) URL — target: performance score ≥ 80
+            on mobile for the landing page.
           </li>
           <li>
             <strong>Accessibility:</strong> semantic headings on folio and

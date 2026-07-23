@@ -98,8 +98,27 @@ export const aiResponseSchema = z.object({
     .transform((v) => v ?? undefined),
 });
 
-export type RawOperation = z.infer<typeof rawOperationSchema>;
-export type AiResponse = z.infer<typeof aiResponseSchema>;
+/**
+ * Zod's nullish→transform output marks every optional field as a required
+ * `T | undefined` key. For constructing ops in code/tests we want true
+ * optionality (omit the key). Runtime parse behaviour is unchanged.
+ */
+type OptionalUndefinedKeys<T> = {
+  [K in keyof T as undefined extends T[K] ? K : never]?: Exclude<T[K], undefined>;
+} & {
+  [K in keyof T as undefined extends T[K] ? never : K]: T[K];
+};
+
+export type RawOperation = OptionalUndefinedKeys<
+  z.infer<typeof rawOperationSchema>
+>;
+
+/** Response shape used after parse / in tests — ops use the loose RawOperation. */
+export type AiResponse = {
+  summary?: string;
+  clarification?: string;
+  operations?: RawOperation[];
+};
 
 type OpType = (typeof OPERATION_TYPES)[number];
 

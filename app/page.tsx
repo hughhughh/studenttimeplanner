@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { demoLoginAction } from "@/app/actions/auth";
+import SiteFooter from "@/app/_components/SiteFooter";
 
 export const metadata = {
   title: "Student Time Planner — your week, planned",
@@ -24,9 +25,16 @@ export default function HomePage() {
   return (
     <div className="flex min-h-full flex-col">
       <header className="flex items-center justify-between px-6 py-4">
-        <span className="text-lg font-bold tracking-tight">
+        <Link
+          href="/"
+          className="flex items-center gap-2 text-lg font-bold tracking-tight"
+        >
+          <span
+            aria-hidden
+            className="inline-block size-2.5 rounded-full bg-accent"
+          />
           Student Time <span className="text-accent">Planner</span>
-        </span>
+        </Link>
         <nav className="flex items-center gap-4">
           <Link
             href="/folio"
@@ -88,9 +96,7 @@ export default function HomePage() {
         </div>
       </main>
 
-      <footer className="px-6 py-6 text-center text-xs text-muted">
-        Student Time Planner · Year 12 Software Engineering project
-      </footer>
+      <SiteFooter />
     </div>
   );
 }

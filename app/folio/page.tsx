@@ -3,6 +3,7 @@ import { Source_Serif_4 } from "next/font/google";
 import Link from "next/link";
 import FolioToc from "@/app/folio/_components/FolioToc";
 import FolioSections from "@/app/folio/_content/FolioSections";
+import SiteFooter from "@/app/_components/SiteFooter";
 
 const sourceSerif = Source_Serif_4({
   subsets: ["latin"],
@@ -11,14 +12,16 @@ const sourceSerif = Source_Serif_4({
 });
 
 export const metadata: Metadata = {
-  title: "Project folio — Student Time Planner",
+  title: "Project folio",
   description:
     "Design and build documentation for Student Time Planner: problem definition, data design, algorithms, and automated testing.",
 };
 
 export default function FolioPage() {
   return (
-    <div className={`${sourceSerif.variable} min-h-full bg-background`}>
+    <div
+      className={`${sourceSerif.variable} flex min-h-full flex-col bg-background`}
+    >
       <header className="sticky top-0 z-20 border-b border-border bg-white/90 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
           <div>
@@ -47,7 +50,7 @@ export default function FolioPage() {
         </div>
       </header>
 
-      <div className="mx-auto flex max-w-6xl gap-10 px-4 py-8 sm:px-6 lg:py-10">
+      <div className="mx-auto flex w-full max-w-6xl flex-1 gap-10 px-4 py-8 sm:px-6 lg:py-10">
         <aside className="hidden w-56 shrink-0 lg:block">
           <div className="sticky top-24 max-h-[calc(100vh-7rem)] overflow-y-auto pr-2">
             <FolioToc />
@@ -81,9 +84,7 @@ export default function FolioPage() {
         </main>
       </div>
 
-      <footer className="border-t border-border px-6 py-6 text-center text-xs text-muted">
-        Student Time Planner · project folio
-      </footer>
+      <SiteFooter note="project folio" />
     </div>
   );
 }

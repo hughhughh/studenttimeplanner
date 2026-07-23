@@ -111,7 +111,38 @@ export const itemCreateSchema = z
     message: "Only tasks can be completed",
   });
 
-export type ItemCreateInput = z.infer<typeof itemCreateSchema>;
-export type RecurrenceInput = z.infer<typeof recurrenceSchema>;
+/**
+ * Zod nullish→transform makes optional fields required as `T | undefined`.
+ * Loosen that for construction (e.g. mapping a stored Item back to create input).
+ */
+type OptionalUndefinedKeys<T> = {
+  [K in keyof T as undefined extends T[K] ? K : never]?: Exclude<
+    T[K],
+    undefined
+  >;
+} & {
+  [K in keyof T as undefined extends T[K] ? never : K]: T[K];
+};
+
+type DeepOptionalUndefineds<T> = T extends (infer U)[]
+  ? DeepOptionalUndefineds<U>[]
+  : T extends Record<string, unknown>
+    ? { [K in keyof T]: DeepOptionalUndefineds<T[K]> } extends infer O
+      ? OptionalUndefinedKeys<{ [K in keyof O]: O[K] }>
+      : never
+    : T;
+
+export type ItemCreateInput = DeepOptionalUndefineds<
+  z.infer<typeof itemCreateSchema>
+> &
+  Pick<
+    z.infer<typeof itemCreateSchema>,
+    "type" | "title" | "color" | "movable" | "tz"
+  >;
+export type RecurrenceInput = OptionalUndefinedKeys<
+  z.infer<typeof recurrenceSchema>
+>;
 export type SegmentInput = z.infer<typeof segmentSchema>;
-export type OverrideInput = z.infer<typeof overrideSchema>;
+export type OverrideInput = OptionalUndefinedKeys<
+  z.infer<typeof overrideSchema>
+>;
