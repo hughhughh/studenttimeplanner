@@ -31,7 +31,7 @@ interface Props {
 }
 
 /** Client abort slightly after the server Gemini cap so the UI never spins forever. */
-const AI_FETCH_TIMEOUT_MS = 35_000;
+const AI_FETCH_TIMEOUT_MS = 50_000;
 const MAX_LOG = 30;
 const MAX_UNDO = 20;
 
@@ -327,6 +327,7 @@ export default function CommandBar({ weekContext }: Props) {
         </div>
       </div>
 
+      {/* AI past-actions log — hidden for now
       {log.length > 0 && (
         <div className="mt-3 space-y-1.5">
           <p className="px-1 text-[11px] uppercase tracking-wide text-muted">
@@ -358,6 +359,7 @@ export default function CommandBar({ weekContext }: Props) {
           </ul>
         </div>
       )}
+      */}
     </div>
   );
 }

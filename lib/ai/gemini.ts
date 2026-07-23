@@ -9,7 +9,7 @@ import type { ContentListUnion, Schema } from "@google/genai";
 
 export const AI_MODEL = "gemini-2.5-flash";
 /** Hard cap so a stuck Gemini call can't hang the command bar forever. */
-export const GEMINI_TIMEOUT_MS = 30_000;
+export const GEMINI_TIMEOUT_MS = 45_000;
 
 export function geminiConfigured(): boolean {
   return Boolean(process.env.GEMINI_API_KEY);

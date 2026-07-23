@@ -195,6 +195,75 @@ describe("AI apply integration (validate → write)", () => {
     expect(deleteItem).toHaveBeenCalledWith("test-user", "study-1");
   });
 
+  it("snaps a soft-timed create off an occupied evening slot", async () => {
+    const result = await applyAiResponse(
+      "test-user",
+      {
+        summary: "Added Maths practise.",
+        operations: [
+          {
+            type: "createItem",
+            itemType: "task",
+            title: "Maths practise",
+            movable: true,
+            segments: [
+              {
+                date: "2026-07-22",
+                timeStart: "19:00",
+                timeEnd: "20:00",
+              },
+            ],
+          },
+        ],
+      },
+      {
+        tz: TZ,
+        todayIso: "2026-07-22",
+        weekDates: [
+          "2026-07-20",
+          "2026-07-21",
+          "2026-07-22",
+          "2026-07-23",
+          "2026-07-24",
+          "2026-07-25",
+          "2026-07-26",
+        ],
+        nowIso: "2026-07-22T12:00:00.000+10:00",
+        userText: "add maths practise tomorrow for an hour",
+      }
+    );
+
+    expect(result.ok).toBe(true);
+    expect(createManyItems).toHaveBeenCalledTimes(1);
+    const created = vi.mocked(createManyItems).mock.calls[0]![1]![0]!;
+    const seg = created.segments![0]!;
+    // Existing English study is 19:00–20:00 on 2026-07-22; must not land there.
+    expect(seg.start.includes("T19:00")).toBe(false);
+  });
+
+  it("infers 'this time tomorrow' locally without Gemini", async () => {
+    const { inferOneOffCreateFromMessage } = await import("@/lib/ai/apply");
+    const op = inferOneOffCreateFromMessage(
+      "add english study this time tomorrow",
+      {
+        tz: TZ,
+        todayIso: "2026-07-23",
+        nowIso: "2026-07-23T21:01:00.000+10:00",
+      }
+    );
+    expect(op).toMatchObject({
+      type: "createItem",
+      title: "English study",
+      segments: [
+        {
+          date: "2026-07-24",
+          timeStart: "21:00",
+          timeEnd: "22:00",
+        },
+      ],
+    });
+  });
+
   it("returns clarification when the model asks and proposes no ops", async () => {
     const result = await applyAiResponse(
       "test-user",

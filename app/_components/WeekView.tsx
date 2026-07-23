@@ -140,7 +140,10 @@ export default function WeekView({
   const [overdueDismissedKey, setOverdueDismissedKey] = useState<string | null>(
     null
   );
-  const [rescheduling, setRescheduling] = useState(false);
+  const [rescheduling, startReschedule] = useTransition();
+  const [rescheduleFeedback, setRescheduleFeedback] = useState<string | null>(
+    null
+  );
   const router = useRouter();
 
   useEffect(() => {
@@ -228,42 +231,40 @@ export default function WeekView({
 
   const rescheduleOverdue = () => {
     if (rescheduling || overdueTasks.length === 0) return;
-    const listed = overdueTasks
-      .map(
-        (o) =>
-          `"${o.title}" (id=${o.itemId}, was ${o.date}, duration keep the same length)`
-      )
-      .join("; ");
-    const text =
-      overdueTasks.length === 1
-        ? `Reschedule my overdue incomplete task ${listed} to the next free slot sometime soon (today or the next free day this week). Prefer a study_period if one is free; otherwise evening. Keep the same duration. Do not ask for confirmation — just move it.`
-        : `Reschedule these overdue incomplete tasks to the next free slots sometime soon (today or the next free days this week), without overlapping fixed items: ${listed}. Prefer study_period blocks when free; otherwise evenings. Keep each task's duration. Do not ask for confirmation — just move them.`;
-
-    setRescheduling(true);
-    startTransition(async () => {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 50_000);
+    setRescheduleFeedback(null);
+    startReschedule(async () => {
       try {
         const res = await fetch("/api/ai", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text, context: weekContext }),
-          signal: controller.signal,
+          body: JSON.stringify({
+            rescheduleOverdue: overdueTasks.map((o) => ({
+              itemId: o.itemId,
+              date: o.date,
+            })),
+            context: weekContext,
+          }),
         });
-        const data = await res.json();
+        const data = (await res.json()) as {
+          ok?: boolean;
+          error?: string;
+          clarification?: string;
+          summary?: string;
+        };
         if (!res.ok || data.ok === false) {
+          setRescheduleFeedback(
+            data.error ?? data.clarification ?? "Couldn't reschedule — try again."
+          );
           return;
         }
         if (data.clarification && !data.summary) {
+          setRescheduleFeedback(data.clarification);
           return;
         }
         setOverdueDismissedKey(overdueKey);
         router.refresh();
       } catch {
-        // Keep the overdue prompt visible so the student can retry.
-      } finally {
-        clearTimeout(timer);
-        setRescheduling(false);
+        setRescheduleFeedback("Couldn't reach the planner — try again.");
       }
     });
   };
@@ -624,48 +625,59 @@ export default function WeekView({
               <CommandBar weekContext={weekContext} />
 
               {showOverduePrompt && (
-                <div className="mt-2 flex items-center justify-between gap-3 px-1 py-1.5 text-xs text-muted">
-                  <p className="min-w-0 truncate">
-                    {overdueTasks.length === 1 ? (
-                      <>
-                        <span className="text-overdue">{overdueTasks[0].title}</span>
-                        {" "}is overdue — reschedule?
-                      </>
-                    ) : (
-                      <>
-                        <span className="text-overdue">
-                          {overdueTasks.length} overdue
-                        </span>
-                        {" — "}
-                        {overdueTasks
-                          .slice(0, 2)
-                          .map((o) => o.title)
-                          .join(", ")}
-                        {overdueTasks.length > 2
-                          ? ` +${overdueTasks.length - 2}`
-                          : ""}
-                        . Reschedule?
-                      </>
-                    )}
-                  </p>
-                  <div className="flex shrink-0 items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setOverdueDismissedKey(overdueKey)}
-                      disabled={rescheduling}
-                      className="text-muted hover:text-foreground disabled:opacity-50"
-                    >
-                      Dismiss
-                    </button>
-                    <button
-                      type="button"
-                      onClick={rescheduleOverdue}
-                      disabled={rescheduling}
-                      className="font-medium text-overdue hover:underline disabled:opacity-50"
-                    >
-                      {rescheduling ? "Rescheduling…" : "Reschedule"}
-                    </button>
+                <div className="mt-2 space-y-1 px-1 py-1.5 text-xs text-muted">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="min-w-0 truncate">
+                      {overdueTasks.length === 1 ? (
+                        <>
+                          <span className="text-overdue">
+                            {overdueTasks[0].title}
+                          </span>
+                          {" "}
+                          is overdue — reschedule?
+                        </>
+                      ) : (
+                        <>
+                          <span className="text-overdue">
+                            {overdueTasks.length} overdue
+                          </span>
+                          {" — "}
+                          {overdueTasks
+                            .slice(0, 2)
+                            .map((o) => o.title)
+                            .join(", ")}
+                          {overdueTasks.length > 2
+                            ? ` +${overdueTasks.length - 2}`
+                            : ""}
+                          . Reschedule?
+                        </>
+                      )}
+                    </p>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setOverdueDismissedKey(overdueKey);
+                          setRescheduleFeedback(null);
+                        }}
+                        disabled={rescheduling}
+                        className="text-muted hover:text-foreground disabled:opacity-50"
+                      >
+                        Dismiss
+                      </button>
+                      <button
+                        type="button"
+                        onClick={rescheduleOverdue}
+                        disabled={rescheduling}
+                        className="font-medium text-overdue hover:underline disabled:opacity-50"
+                      >
+                        {rescheduling ? "Rescheduling…" : "Reschedule"}
+                      </button>
+                    </div>
                   </div>
+                  {rescheduleFeedback && (
+                    <p className="text-overdue">{rescheduleFeedback}</p>
+                  )}
                 </div>
               )}
             </div>

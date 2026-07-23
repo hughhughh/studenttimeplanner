@@ -9,7 +9,12 @@ import {
   repairAiResponse,
 } from "@/lib/ai/operations";
 import { buildSystemInstruction } from "@/lib/ai/prompt";
-import { applyAiResponse } from "@/lib/ai/apply";
+import {
+  applyAiResponse,
+  inferOneOffCreateFromMessage,
+  inferWeeklyCreateFromMessage,
+} from "@/lib/ai/apply";
+import { rescheduleOverdueTasks } from "@/lib/ai/rescheduleOverdue";
 import {
   applyUndoSnapshot,
   isRedoRequest,
@@ -25,6 +30,7 @@ export async function POST(request: Request) {
     context?: { weekDates?: string[]; tz?: string; nowIso?: string };
     undo?: UndoSnapshot;
     redo?: UndoSnapshot;
+    rescheduleOverdue?: { itemId: string; date: string }[];
   };
   try {
     body = await request.json();
@@ -82,6 +88,34 @@ export async function POST(request: Request) {
     );
   }
 
+  const tz = body.context?.tz ?? DEFAULT_TIMEZONE;
+  const nowIso =
+    body.context?.nowIso ??
+    DateTime.now().setZone(tz).toISO() ??
+    new Date().toISOString();
+  const todayIso = DateTime.fromISO(nowIso, { zone: tz }).toFormat(ISO_DATE);
+  const weekDates =
+    body.context?.weekDates && body.context.weekDates.length === 7
+      ? body.context.weekDates
+      : [todayIso];
+
+  // One-click overdue reschedule — deterministic free-slot placement, no Gemini.
+  if (body.rescheduleOverdue && body.rescheduleOverdue.length > 0) {
+    const result = await rescheduleOverdueTasks(userId, body.rescheduleOverdue, {
+      tz,
+      todayIso,
+      weekDates,
+      nowIso,
+    });
+    return NextResponse.json(
+      {
+        ...result,
+        prompt: text || "reschedule overdue",
+      },
+      { status: result.ok ? 200 : 422 }
+    );
+  }
+
   if (text && isRedoRequest(text)) {
     return NextResponse.json({
       ok: true,
@@ -100,24 +134,48 @@ export async function POST(request: Request) {
     });
   }
 
+  if (!text) {
+    return NextResponse.json(
+      { ok: false, error: "Say what you'd like to change." },
+      { status: 400 }
+    );
+  }
+
+  const applyCtx = {
+    tz,
+    todayIso,
+    weekDates,
+    nowIso,
+    userText: text,
+  };
+
+  // Fast path: simple one-off / weekly creates — skip Gemini entirely.
+  const localCreate =
+    inferOneOffCreateFromMessage(text, applyCtx) ??
+    inferWeeklyCreateFromMessage(text);
+  if (localCreate) {
+    const result = await applyAiResponse(
+      userId,
+      { summary: `Added ${localCreate.title ?? "that item"}.`, operations: [localCreate] },
+      applyCtx
+    );
+    return NextResponse.json(
+      {
+        ...result,
+        prompt: text,
+        usedFallback: true,
+        model: { operations: [localCreate] },
+      },
+      { status: result.ok ? 200 : 422 }
+    );
+  }
+
   if (!geminiConfigured()) {
     return NextResponse.json(
       { ok: false, error: "AI is not configured. Set GEMINI_API_KEY in .env.local." },
       { status: 400 }
     );
   }
-
-  if (!text) {
-    return NextResponse.json({ ok: false, error: "Say what you'd like to change." }, { status: 400 });
-  }
-
-  const tz = body.context?.tz ?? DEFAULT_TIMEZONE;
-  const nowIso = body.context?.nowIso ?? DateTime.now().setZone(tz).toISO() ?? new Date().toISOString();
-  const todayIso = DateTime.fromISO(nowIso, { zone: tz }).toFormat(ISO_DATE);
-  const weekDates =
-    body.context?.weekDates && body.context.weekDates.length === 7
-      ? body.context.weekDates
-      : [todayIso];
 
   try {
     const items = await listItems(userId);
@@ -142,12 +200,7 @@ export async function POST(request: Request) {
       });
     }
 
-    const result = await applyAiResponse(userId, parsed.data, {
-      tz,
-      todayIso,
-      weekDates,
-      userText: text,
-    });
+    const result = await applyAiResponse(userId, parsed.data, applyCtx);
     return NextResponse.json(
       {
         ...result,
@@ -157,10 +210,37 @@ export async function POST(request: Request) {
       { status: result.ok ? 200 : 422 }
     );
   } catch (err) {
+    const timedOut =
+      err instanceof Error && err.message.includes("took too long");
+    // Last resort: if Gemini hung, still try a simple local create.
+    if (timedOut) {
+      const fallback =
+        inferOneOffCreateFromMessage(text, applyCtx) ??
+        inferWeeklyCreateFromMessage(text);
+      if (fallback) {
+        const result = await applyAiResponse(
+          userId,
+          {
+            summary: `Added ${fallback.title ?? "that item"}.`,
+            operations: [fallback],
+          },
+          applyCtx
+        );
+        return NextResponse.json(
+          {
+            ...result,
+            prompt: text,
+            usedFallback: true,
+            model: { operations: [fallback] },
+          },
+          { status: result.ok ? 200 : 422 }
+        );
+      }
+    }
     const message =
       err instanceof Error && err.message.includes("GEMINI_API_KEY")
         ? err.message
-        : err instanceof Error && err.message.includes("took too long")
+        : timedOut
           ? err.message
           : "The planner had trouble with that request. Please try again.";
     return NextResponse.json(

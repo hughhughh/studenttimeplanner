@@ -30,11 +30,22 @@ import {
   type UndoStep,
 } from "@/lib/ai/undo";
 import { colorForSubjectTitle } from "@/lib/calendar/subjectColor";
+import {
+  collectScheduleWindows,
+  durationMinutesFromMessage,
+  findNextFreeSlot,
+  intervalsOverlapSlot,
+  messageSpecifiesClockTime,
+  notBeforeMapForNow,
+  type TimeInterval,
+} from "@/lib/scheduling/freeSlots";
 
 export interface ApplyContext {
   tz: string;
   todayIso: string;
   weekDates?: string[];
+  /** ISO now — used when snapping soft-timed creates off busy slots. */
+  nowIso?: string;
   /** Original student message — used to infer a title when the model omits one. */
   userText?: string;
 }
@@ -258,6 +269,117 @@ export function inferWeeklyCreateFromMessage(
   };
 }
 
+function minToHhmm(totalMin: number): string {
+  const clamped = Math.max(0, Math.min(24 * 60 - 1, totalMin));
+  const h = Math.floor(clamped / 60);
+  const m = clamped % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+/**
+ * Fast path for simple one-off adds ("add English study this time tomorrow",
+ * "add maths practise tomorrow for an hour") so we don't wait on Gemini.
+ */
+export function inferOneOffCreateFromMessage(
+  message: string,
+  ctx: { todayIso: string; nowIso: string; tz: string; weekDates?: string[] }
+): RawOperation | null {
+  const text = message.trim();
+  if (
+    !/^(?:please\s+|can you\s+|could you\s+)?add\s+/i.test(text) ||
+    /\bevery\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|wed|thu|fri|sat|sun)\b/i.test(
+      text
+    ) ||
+    /\b(and then|also add|then add|move|delete|remove|skip|push|shift|complete|mark|reschedule|swap)\b/i.test(
+      text
+    )
+  ) {
+    return null;
+  }
+
+  let date: string | undefined;
+  if (/\btomorrow\b/i.test(text)) {
+    date = DateTime.fromFormat(ctx.todayIso, ISO_DATE, { zone: ctx.tz })
+      .plus({ days: 1 })
+      .toFormat(ISO_DATE);
+  } else if (/\btoday\b|\btonight\b/i.test(text)) {
+    date = ctx.todayIso;
+  } else {
+    const day = inferWeekdayFromMessage(text);
+    if (day) date = resolveWeekdayDate(day, ctx);
+  }
+  if (!date) return null;
+
+  const title =
+    inferTitleFromMessage(text) ??
+    (() => {
+      const raw = text
+        .replace(
+          /^(?:please\s+|can you\s+|could you\s+)?add\s+(?:a|an|my|the)?\s*/i,
+          ""
+        )
+        .replace(
+          /\s+(?:this\s+time\s+)?(?:tomorrow|today|tonight)\b[\s\S]*$/i,
+          ""
+        )
+        .replace(/\s+for\s+(?:an?\s+)?(?:\d+\s+)?(?:hours?|minutes?|mins?).*$/i, "")
+        .replace(/\s+at\s+.+$/i, "")
+        .replace(/\s+/g, " ")
+        .trim();
+      if (!raw || raw.length > 80) return undefined;
+      return raw.charAt(0).toUpperCase() + raw.slice(1);
+    })();
+  if (!title) return null;
+
+  const fromMsg = extractTimeRangeFromMessage(text);
+  const duration =
+    durationMinutesFromMessage(text) ??
+    (fromMsg.timeStart && fromMsg.timeEnd
+      ? undefined
+      : 60);
+
+  let timeStart = fromMsg.timeStart;
+  let timeEnd = fromMsg.timeEnd;
+
+  if (/\bthis\s+time\b/i.test(text)) {
+    const now = DateTime.fromISO(ctx.nowIso, { zone: ctx.tz });
+    if (!now.isValid) return null;
+    const rounded = Math.round((now.hour * 60 + now.minute) / 5) * 5;
+    timeStart = minToHhmm(rounded);
+    timeEnd = minToHhmm(rounded + (duration ?? 60));
+  } else if (timeStart && !timeEnd) {
+    timeEnd = defaultEndFromStart(timeStart);
+  } else if (!timeStart) {
+    // Soft evening default — snapCreateOffBusy relocates if occupied.
+    timeStart = "19:00";
+    timeEnd = minToHhmm(19 * 60 + (duration ?? 60));
+  }
+
+  if (!timeStart || !timeEnd || timeStart >= timeEnd) return null;
+
+  // Don't invent a slot that crosses midnight from "this time" near end of day.
+  const startMin =
+    DateTime.fromFormat(timeStart, TIME_OF_DAY).hour * 60 +
+    DateTime.fromFormat(timeStart, TIME_OF_DAY).minute;
+  const endMin =
+    DateTime.fromFormat(timeEnd, TIME_OF_DAY).hour * 60 +
+    DateTime.fromFormat(timeEnd, TIME_OF_DAY).minute;
+  if (endMin > 24 * 60 - 1 || endMin <= startMin) {
+    // Cap at 23:59 same day if needed
+    if (startMin >= 23 * 60) return null;
+    timeEnd = "23:59";
+  }
+
+  const asActivity = ACTIVITY_TITLE.test(title);
+  return {
+    type: "createItem",
+    title,
+    itemType: asActivity ? "activity" : "task",
+    movable: !asActivity,
+    segments: [{ date, timeStart, timeEnd }],
+  };
+}
+
 const COLOR_NAMES = Object.keys(ITEM_COLORS)
   .sort((a, b) => b.length - a.length)
   .join("|");
@@ -403,6 +525,86 @@ function resolveCreateTitle(op: RawOperation, userText?: string): string {
   const inferred = userText ? inferTitleFromMessage(userText) : undefined;
   if (inferred) return inferred;
   throw new OpError("A new item needs a title.");
+}
+
+/**
+ * When the student did not name a clock time, snap a one-off create off any
+ * busy overlap onto the next free slot (same day first, then following days).
+ */
+function snapCreateOffBusy(
+  input: ItemCreateInput,
+  ctx: ApplyContext,
+  existing: Item[],
+  extraBusy: TimeInterval[]
+): ItemCreateInput {
+  if (input.recurrence || !input.segments?.length) return input;
+  if (ctx.userText && messageSpecifiesClockTime(ctx.userText)) return input;
+
+  const nowIso =
+    ctx.nowIso ??
+    DateTime.fromFormat(ctx.todayIso, ISO_DATE, { zone: ctx.tz })
+      .set({ hour: 12 })
+      .toISO() ??
+    new Date().toISOString();
+
+  const weekDates =
+    ctx.weekDates && ctx.weekDates.length > 0
+      ? ctx.weekDates
+      : [ctx.todayIso];
+  const searchDates = [...weekDates];
+  let cur = DateTime.fromFormat(ctx.todayIso, ISO_DATE, { zone: ctx.tz });
+  for (let i = 0; i < 7; i++) {
+    const d = cur.toFormat(ISO_DATE);
+    if (!searchDates.includes(d)) searchDates.push(d);
+    cur = cur.plus({ days: 1 });
+  }
+
+  const { busy, preferred } = collectScheduleWindows(
+    existing,
+    searchDates,
+    nowIso,
+    ctx.tz
+  );
+  const allBusy = [...busy, ...extraBusy];
+
+  const nextSegments = input.segments.map((seg) => {
+    const start = DateTime.fromISO(seg.start, { zone: ctx.tz });
+    const end = DateTime.fromISO(seg.end, { zone: ctx.tz });
+    if (!start.isValid || !end.isValid) return seg;
+    const date = start.toFormat(ISO_DATE);
+    const timeStart = start.toFormat(TIME_OF_DAY);
+    const timeEnd = end.toFormat(TIME_OF_DAY);
+    const durationMin = Math.max(
+      1,
+      Math.round(end.diff(start, "minutes").minutes)
+    );
+    const preferredDuration =
+      (ctx.userText && durationMinutesFromMessage(ctx.userText)) || durationMin;
+
+    if (!intervalsOverlapSlot(allBusy, date, timeStart, timeEnd)) {
+      return seg;
+    }
+
+    // Prefer keeping the requested day; fall back to later search dates.
+    const dates = [date, ...searchDates.filter((d) => d !== date && d >= date)];
+    const slot = findNextFreeSlot({
+      dates,
+      busy: allBusy,
+      preferred,
+      durationMin: preferredDuration,
+      notBeforeMinByDate: notBeforeMapForNow(ctx.todayIso, nowIso, ctx.tz),
+      // Soft study/homework defaults to after-school rather than 6am.
+      preferAfterMin: 15 * 60,
+    });
+    if (!slot) return seg;
+
+    const startIso = dateTimeFrom(slot.date, slot.timeStart, ctx.tz).toISO();
+    const endIso = dateTimeFrom(slot.date, slot.timeEnd, ctx.tz).toISO();
+    if (!startIso || !endIso) return seg;
+    return { start: startIso, end: endIso };
+  });
+
+  return { ...input, segments: nextSegments };
 }
 
 function buildCreate(op: RawOperation, ctx: ApplyContext): ItemCreateInput {
@@ -972,12 +1174,15 @@ export async function applyAiResponse(
   let duplicateCount = 0;
   const duplicateTitles: string[] = [];
   let missingSkipped = 0;
+  /** Busy slots already claimed by earlier creates in this batch. */
+  const batchBusy: TimeInterval[] = [];
 
   for (const op of operations) {
     try {
       switch (op.type) {
         case "createItem": {
-          const input = buildCreate(op, ctx);
+          let input = buildCreate(op, ctx);
+          input = snapCreateOffBusy(input, ctx, existing, batchBusy);
           const sig = signature(input);
           if (existingSigs.has(sig) || batchSigs.has(sig)) {
             duplicateCount += 1;
@@ -985,6 +1190,17 @@ export async function applyAiResponse(
             break; // skip duplicates rather than create them
           }
           batchSigs.add(sig);
+          for (const seg of input.segments ?? []) {
+            const start = DateTime.fromISO(seg.start, { zone: ctx.tz });
+            const end = DateTime.fromISO(seg.end, { zone: ctx.tz });
+            if (!start.isValid || !end.isValid) continue;
+            batchBusy.push({
+              date: start.toFormat(ISO_DATE),
+              startMin: start.hour * 60 + start.minute,
+              endMin: end.hour * 60 + end.minute,
+              title: input.title,
+            });
+          }
           actions.push({ kind: "create", input });
           break;
         }
