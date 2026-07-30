@@ -213,9 +213,37 @@ export function repairAiResponse(raw: unknown): unknown {
       if (typeof op.timeEnd === "string" && /^\d{1,2}$/.test(op.timeEnd.trim())) {
         op.timeEnd = `${op.timeEnd.trim().padStart(2, "0")}:00`;
       }
+      // Gemini sometimes emits timezone-junk instead of HH:mm
+      // e.g. "13:00:00.000Z[Australia/Sydney,...]"
+      if (typeof op.timeStart === "string") {
+        op.timeStart = sanitizeModelTime(op.timeStart);
+      }
+      if (typeof op.timeEnd === "string") {
+        op.timeEnd = sanitizeModelTime(op.timeEnd);
+      }
+      if (Array.isArray(op.segments)) {
+        op.segments = op.segments.map((seg) => {
+          if (!seg || typeof seg !== "object") return seg;
+          const s = { ...(seg as Record<string, unknown>) };
+          if (typeof s.timeStart === "string") s.timeStart = sanitizeModelTime(s.timeStart);
+          if (typeof s.timeEnd === "string") s.timeEnd = sanitizeModelTime(s.timeEnd);
+          return s;
+        });
+      }
       return op;
     }),
   };
+}
+
+/** Strip Gemini's timezone/ISO garbage down to HH:mm when possible. */
+function sanitizeModelTime(raw: string): string {
+  const trimmed = raw.trim();
+  if (/^\d{1,2}:\d{2}$/.test(trimmed)) return trimmed;
+  const leading = trimmed.match(/^(\d{1,2}):(\d{2})(?::\d{2}(?:\.\d+)?)?/);
+  if (leading) {
+    return `${leading[1].padStart(2, "0")}:${leading[2]}`;
+  }
+  return trimmed;
 }
 
 /** JSON schema handed to Gemini for `responseSchema`. */
@@ -274,7 +302,8 @@ export const AI_RESPONSE_GEMINI_SCHEMA: Schema = {
           byWeekday: {
             type: Type.ARRAY,
             items: { type: Type.INTEGER },
-            description: "Weekdays 1=Mon ... 7=Sun.",
+            description:
+              "REQUIRED for weekly createItem. Weekdays 1=Mon ... 7=Sun. Sundays → [7], Fridays → [5].",
           },
           interval: {
             type: Type.INTEGER,
@@ -295,8 +324,14 @@ export const AI_RESPONSE_GEMINI_SCHEMA: Schema = {
               propertyOrdering: ["date", "timeStart", "timeEnd"],
             },
           },
-          timeStart: { type: Type.STRING, description: "HH:mm (24h)." },
-          timeEnd: { type: Type.STRING, description: "HH:mm (24h)." },
+          timeStart: {
+            type: Type.STRING,
+            description: "HH:mm only (24h), e.g. 13:00. Never include timezone or ISO junk.",
+          },
+          timeEnd: {
+            type: Type.STRING,
+            description: "HH:mm only (24h), e.g. 16:00. Required with timeStart for ranges.",
+          },
           startDate: { type: Type.STRING },
           endDate: { type: Type.STRING },
           newDate: { type: Type.STRING },

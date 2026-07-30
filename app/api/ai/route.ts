@@ -149,10 +149,11 @@ export async function POST(request: Request) {
     userText: text,
   };
 
-  // Fast path: simple one-off / weekly creates — skip Gemini entirely.
+  // Fast path: simple weekly / one-off creates — skip Gemini entirely.
+  // Weekly first so "add tutoring to sundays…" is not treated as a one-off.
   const localCreate =
-    inferOneOffCreateFromMessage(text, applyCtx) ??
-    inferWeeklyCreateFromMessage(text);
+    inferWeeklyCreateFromMessage(text) ??
+    inferOneOffCreateFromMessage(text, applyCtx);
   if (localCreate) {
     const result = await applyAiResponse(
       userId,
@@ -215,8 +216,8 @@ export async function POST(request: Request) {
     // Last resort: if Gemini hung, still try a simple local create.
     if (timedOut) {
       const fallback =
-        inferOneOffCreateFromMessage(text, applyCtx) ??
-        inferWeeklyCreateFromMessage(text);
+        inferWeeklyCreateFromMessage(text) ??
+        inferOneOffCreateFromMessage(text, applyCtx);
       if (fallback) {
         const result = await applyAiResponse(
           userId,

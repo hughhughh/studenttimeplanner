@@ -203,27 +203,33 @@ function signature(item: {
 /** Pull a short title from the student's message when the model forgets one. */
 function inferTitleFromMessage(message: string): string | undefined {
   const m = message.trim().match(
-    /^(?:can you |could you |please )?(?:add|put|schedule|fit|book|create|give me)\s+(?:a|an|my|the)?\s*(.+)$/i
+    /^(?:can you |could you |please )?(?:add|put|schedule|fit|book|create|give me)\s+(?:(?:a|an|my|the)\s+)?(.+)$/i
   );
   if (!m?.[1]) return undefined;
 
   const stop =
-    /\s+(?:in|on|for|at|around|every|this|next|tonight|today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|from|until)\b/i;
+    /\s+(?:in|on|to|for|at|around|every|each|this|next|tonight|today|tomorrow|mondays?|tuesdays?|wednesdays?|thursdays?|fridays?|saturdays?|sundays?|mons?|tues?|weds?|thurs?|fris?|sats?|suns?|from|until)\b/i;
   const raw = m[1].split(stop)[0]?.replace(/\s+/g, " ").trim();
   if (!raw || raw.length > 80) return undefined;
 
   return raw.charAt(0).toUpperCase() + raw.slice(1);
 }
 
+/** Plural forms matter — students say "sundays" / "fridays", not only "sunday". */
 const WEEKDAY_WORDS: [RegExp, number][] = [
-  [/\bmonday\b|\bmon\b/i, 1],
-  [/\btuesday\b|\btue\b/i, 2],
-  [/\bwednesday\b|\bwed\b/i, 3],
-  [/\bthursday\b|\bthu\b/i, 4],
-  [/\bfriday\b|\bfri\b/i, 5],
-  [/\bsaturday\b|\bsat\b/i, 6],
-  [/\bsunday\b|\bsun\b/i, 7],
+  [/\bmondays?\b|\bmons?\b/i, 1],
+  [/\btuesdays?\b|\btues?\b/i, 2],
+  [/\bwednesdays?\b|\bweds?\b/i, 3],
+  [/\bthursdays?\b|\bthurs?\b/i, 4],
+  [/\bfridays?\b|\bfris?\b/i, 5],
+  [/\bsaturdays?\b|\bsats?\b/i, 6],
+  [/\bsundays?\b|\bsuns?\b/i, 7],
 ];
+
+const WEEKDAY_NAME =
+  "monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|tues|wed|thu|thur|thurs|fri|sat|sun";
+const WEEKDAY_PLURAL =
+  "mondays|tuesdays|wednesdays|thursdays|fridays|saturdays|sundays";
 
 function inferWeekdayFromMessage(message: string): number | undefined {
   for (const [pattern, day] of WEEKDAY_WORDS) {
@@ -232,29 +238,88 @@ function inferWeekdayFromMessage(message: string): number | undefined {
   return undefined;
 }
 
+/** True when the message implies a weekly repeat on a named weekday. */
+function looksLikeWeeklyWeekday(message: string): boolean {
+  // every/each Friday, every Fridays
+  if (
+    new RegExp(
+      String.raw`\b(?:every|each)\s+(?:${WEEKDAY_NAME}|${WEEKDAY_PLURAL})\b`,
+      "i"
+    ).test(message)
+  ) {
+    return true;
+  }
+  // on/to Fridays (plural) — singular "on Friday" is a one-off
+  if (
+    new RegExp(
+      String.raw`\b(?:on|to)\s+(?:${WEEKDAY_PLURAL})\b`,
+      "i"
+    ).test(message)
+  ) {
+    return true;
+  }
+  // bare "Fridays" / "Sundays"
+  return new RegExp(String.raw`\b(?:${WEEKDAY_PLURAL})\b`, "i").test(message);
+}
+
 const ACTIVITY_TITLE =
-  /\b(assembly|school|sport|training|gym|football|soccer|practice|lunch|chapel|homeroom)\b/i;
+  /\b(assembly|school|sport|training|gym|football|soccer|practice|lunch|chapel|homeroom|tutoring|tutor)\b/i;
 
 /**
- * When the model returns no operations for a clear "add X every Friday from A to B"
- * request, build the create ourselves so the calendar still updates.
+ * When the model returns no operations for a clear weekly create
+ * ("add X every Friday…", "add tutoring to sundays from 1–4pm"), build it locally.
  */
 export function inferWeeklyCreateFromMessage(
   message: string
 ): RawOperation | null {
   const text = message.trim();
-  const match = text.match(
-    /^(?:please\s+|can you\s+|could you\s+)?add\s+(.+?)\s+every\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|wed|thu|fri|sat|sun)\b([\s\S]*)$/i
-  );
-  if (!match) return null;
+  if (
+    !/^(?:please\s+|can you\s+|could you\s+)?(?:add|put|schedule|book|create)\s+/i.test(
+      text
+    )
+  ) {
+    return null;
+  }
+  if (
+    /\b(and then|also add|then add|move|delete|remove|skip|push|shift|complete|mark|reschedule|swap)\b/i.test(
+      text
+    )
+  ) {
+    return null;
+  }
+  if (!looksLikeWeeklyWeekday(text)) return null;
 
-  const titleRaw = match[1].replace(/\s+/g, " ").trim();
-  if (!titleRaw || titleRaw.length > 80) return null;
-  const day = inferWeekdayFromMessage(match[2]);
+  const day = inferWeekdayFromMessage(text);
   const times = extractTimeRangeFromMessage(text);
   if (!day || !times.timeStart || !times.timeEnd) return null;
 
-  const title = titleRaw.charAt(0).toUpperCase() + titleRaw.slice(1);
+  const title =
+    inferTitleFromMessage(text) ??
+    (() => {
+      const raw = text
+        .replace(
+          /^(?:please\s+|can you\s+|could you\s+)?(?:add|put|schedule|book|create)\s+(?:(?:a|an|my|the)\s+)?/i,
+          ""
+        )
+        .replace(
+          new RegExp(
+            String.raw`\s+(?:every|each|on|to)\s+(?:${WEEKDAY_NAME}|${WEEKDAY_PLURAL})\b[\s\S]*$`,
+            "i"
+          ),
+          ""
+        )
+        .replace(
+          new RegExp(String.raw`\s+(?:${WEEKDAY_PLURAL})\b[\s\S]*$`, "i"),
+          ""
+        )
+        .replace(/\s+from\s+.+$/i, "")
+        .replace(/\s+/g, " ")
+        .trim();
+      if (!raw || raw.length > 80) return undefined;
+      return raw.charAt(0).toUpperCase() + raw.slice(1);
+    })();
+  if (!title) return null;
+
   const asActivity = ACTIVITY_TITLE.test(title);
   return {
     type: "createItem",
@@ -287,9 +352,7 @@ export function inferOneOffCreateFromMessage(
   const text = message.trim();
   if (
     !/^(?:please\s+|can you\s+|could you\s+)?add\s+/i.test(text) ||
-    /\bevery\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|wed|thu|fri|sat|sun)\b/i.test(
-      text
-    ) ||
+    looksLikeWeeklyWeekday(text) ||
     /\b(and then|also add|then add|move|delete|remove|skip|push|shift|complete|mark|reschedule|swap)\b/i.test(
       text
     )
@@ -315,7 +378,7 @@ export function inferOneOffCreateFromMessage(
     (() => {
       const raw = text
         .replace(
-          /^(?:please\s+|can you\s+|could you\s+)?add\s+(?:a|an|my|the)?\s*/i,
+          /^(?:please\s+|can you\s+|could you\s+)?add\s+(?:(?:a|an|my|the)\s+)?/i,
           ""
         )
         .replace(
@@ -1294,8 +1357,33 @@ export async function applyAiResponse(
     }
   }
 
-  // All-or-nothing: if anything failed validation, write nothing.
+  // All-or-nothing: if anything failed validation, write nothing —
+  // unless the student message is a clear local create we can apply instead.
   if (errors.length > 0) {
+    if (ctx.userText) {
+      const local =
+        inferWeeklyCreateFromMessage(ctx.userText) ??
+        (ctx.nowIso
+          ? inferOneOffCreateFromMessage(ctx.userText, {
+              todayIso: ctx.todayIso,
+              nowIso: ctx.nowIso,
+              tz: ctx.tz,
+              weekDates: ctx.weekDates,
+            })
+          : null);
+      if (local) {
+        // Drop userText so a second failure cannot recurse forever.
+        const recovered = await applyAiResponse(
+          userId,
+          {
+            summary: `Added ${local.title ?? "that item"}.`,
+            operations: [local],
+          },
+          { ...ctx, userText: undefined }
+        );
+        return { ...recovered, usedFallback: true };
+      }
+    }
     return { ok: false, error: errors[0], usedFallback, missingSkipped };
   }
 
