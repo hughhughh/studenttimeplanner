@@ -73,6 +73,83 @@ type PlannedAction =
 
 class OpError extends Error {}
 
+/** True when the student message names this calendar title. */
+export function titleMentionedInText(text: string, title: string): boolean {
+  const norm = (s: string) =>
+    s
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  const hay = norm(text);
+  const needle = norm(title);
+  if (!needle || !hay) return false;
+  if (hay.includes(needle)) return true;
+  const words = needle.split(" ").filter((w) => w.length > 2);
+  return words.length > 0 && words.every((w) => hay.includes(w));
+}
+
+/**
+ * Student asked (or confirmed) moving/shifting this named item — including
+ * follow-up blobs that still contain the original request + "explicitly".
+ */
+export function userIntendsExplicitMove(
+  userText: string | undefined,
+  title: string
+): boolean {
+  if (!userText?.trim()) return false;
+  if (!titleMentionedInText(userText, title)) return false;
+  const moveIntent =
+    /\b(move|shift|push|pull|reschedule|delay|bring\s+(it\s+)?(forward|back)|earlier|later)\b/i.test(
+      userText
+    );
+  const confirms =
+    /\b(yes|yep|yeah|explicitly|go\s+ahead|please\s+do|confirm|do\s+it)\b/i.test(
+      userText
+    );
+  // Follow-up after our fixed-item ask still counts once they affirm.
+  const afterFixedAsk = /is fixed\.?\s*say explicitly/i.test(userText);
+  return moveIntent || (confirms && afterFixedAsk);
+}
+
+/**
+ * Stamp explicit:true on move/shift ops when the student already asked to
+ * move that fixed item — avoids a useless second confirmation turn.
+ */
+function stampExplicitFromUserText(
+  operations: RawOperation[],
+  userText: string | undefined,
+  byId: Map<string, Item>
+): RawOperation[] {
+  if (!userText?.trim()) return operations;
+  return operations.map((op) => {
+    if (op.explicit) return op;
+    if (
+      op.type !== "moveItem" &&
+      op.type !== "bulkShift" &&
+      op.type !== "updateItem"
+    ) {
+      return op;
+    }
+    if (op.type === "bulkShift") {
+      const ids = op.itemIds ?? [];
+      const anyFixedNamed = ids.some((id) => {
+        const item = byId.get(id);
+        return (
+          item &&
+          !item.movable &&
+          userIntendsExplicitMove(userText, item.title)
+        );
+      });
+      return anyFixedNamed ? { ...op, explicit: true } : op;
+    }
+    const item = op.itemId ? byId.get(op.itemId) : undefined;
+    if (!item || item.movable) return op;
+    if (!userIntendsExplicitMove(userText, item.title)) return op;
+    return { ...op, explicit: true };
+  });
+}
+
 // --- small helpers -------------------------------------------------------
 
 function resolveColor(value: string | undefined): string {
@@ -1231,6 +1308,10 @@ export async function applyAiResponse(
   const byId = new Map(existing.map((i) => [i.id, i]));
   const existingSigs = new Set(existing.map((i) => signature(i)));
 
+  // After all op inference: if the student already asked to move a fixed item,
+  // mark those ops explicit so we don't bounce them for a redundant confirm.
+  operations = stampExplicitFromUserText(operations, ctx.userText, byId);
+
   const actions: PlannedAction[] = [];
   const errors: string[] = [];
   const batchSigs = new Set<string>();
@@ -1383,6 +1464,19 @@ export async function applyAiResponse(
         );
         return { ...recovered, usedFallback: true };
       }
+    }
+    // Fixed-item guard: surface as a clarification so the command bar keeps
+    // conversation context for "yes / explicitly" follow-ups.
+    const fixedAsk = errors.find((e) =>
+      /is fixed\.?\s*Say explicitly/i.test(e)
+    );
+    if (fixedAsk) {
+      return {
+        ok: true,
+        clarification: fixedAsk,
+        usedFallback,
+        missingSkipped,
+      };
     }
     return { ok: false, error: errors[0], usedFallback, missingSkipped };
   }

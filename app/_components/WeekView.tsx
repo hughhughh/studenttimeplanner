@@ -252,9 +252,7 @@ export default function WeekView({
           summary?: string;
         };
         if (!res.ok || data.ok === false) {
-          setRescheduleFeedback(
-            data.error ?? data.clarification ?? "Couldn't reschedule — try again."
-          );
+          setRescheduleFeedback("Feature not available on demo mode");
           return;
         }
         if (data.clarification && !data.summary) {
@@ -264,7 +262,7 @@ export default function WeekView({
         setOverdueDismissedKey(overdueKey);
         router.refresh();
       } catch {
-        setRescheduleFeedback("Couldn't reach the planner — try again.");
+        setRescheduleFeedback("Feature not available on demo mode");
       }
     });
   };

@@ -103,7 +103,9 @@ ${STUDY_PERIOD_CONCEPT}
 
 RULES
 - "Tasks" (homework, revision, study) can be completed and are movable by default. "Activities" (school, sport, fixed commitments) cannot be completed and are FIXED (movable=false) by default.
-- Never move or shift a FIXED item unless the student explicitly asks to; when they do, set "explicit": true on that operation.
+- Never move or shift a FIXED item unless the student asks to move that item by name (e.g. "move football training an hour later", "push school back 15 minutes"). When they do — or when they confirm after you asked ("yes", "explicitly", "go ahead") — set "explicit": true on that operation. Do not ask again if the original request already named the item and asked to move it.
+- Multi-turn context: the student message may include "Original request:", "Assistant asked:", and "Student reply:" lines. Treat that as one conversation — resolve pronouns ("it", "that") and short answers ("yes", "explicitly") against the original request. Never ask which item if the original request already named it.
+- If a previous attempt failed, the message may include a "Server error:" block. Fix the operations to resolve that error (do not repeat the same mistake).
 - Only tasks can be completed.
 - NEVER place a new task on top of an existing busy block. Use FREE SLOTS above. If the student did not give a clock time, pick the next sensible free slot on the requested day (prefer study_period windows, then after-school/evening gaps).
 - When fitting tasks today, check items marked study_period first — schedule homework into the next upcoming study period today before defaulting to after-school or evening.

@@ -7,6 +7,7 @@ import {
   AI_RESPONSE_GEMINI_SCHEMA,
   aiResponseSchema,
   repairAiResponse,
+  type AiResponse,
 } from "@/lib/ai/operations";
 import { buildSystemInstruction } from "@/lib/ai/prompt";
 import {
@@ -23,6 +24,50 @@ import {
 } from "@/lib/ai/undo";
 import { DEFAULT_TIMEZONE } from "@/lib/config";
 import { ISO_DATE } from "@/lib/calendar/time";
+
+/** One repair pass: feed the apply/parse error + prior JSON back to Gemini. */
+function buildRetryPrompt(
+  userText: string,
+  previous: unknown,
+  error: string
+): string {
+  return [
+    `Student request:\n${userText}`,
+    `Your previous JSON (rejected):\n${JSON.stringify(previous)}`,
+    `Server error / rejection:\n${error}`,
+    `Fix the JSON to resolve that error. If the student already named a fixed item and asked to move it, set "explicit": true. If you still need information, return only a clarification — do not repeat the same failing operations.`,
+  ].join("\n\n");
+}
+
+async function generateAndParseAiResponse(opts: {
+  systemInstruction: string;
+  contents: string;
+}): Promise<
+  | { ok: true; data: AiResponse; raw: unknown }
+  | {
+      ok: false;
+      raw: unknown;
+      repaired: unknown;
+      parseError: unknown;
+    }
+> {
+  const raw = await generateJson({
+    systemInstruction: opts.systemInstruction,
+    contents: opts.contents,
+    responseSchema: AI_RESPONSE_GEMINI_SCHEMA,
+  });
+  const repaired = repairAiResponse(raw);
+  const parsed = aiResponseSchema.safeParse(repaired);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      raw,
+      repaired,
+      parseError: parsed.error.issues.slice(0, 5),
+    };
+  }
+  return { ok: true, data: parsed.data, raw };
+}
 
 export async function POST(request: Request) {
   let body: {
@@ -180,33 +225,83 @@ export async function POST(request: Request) {
 
   try {
     const items = await listItems(userId);
-
-    const raw = await generateJson({
-      systemInstruction: buildSystemInstruction({ tz, nowIso, weekDates, items }),
-      contents: text,
-      responseSchema: AI_RESPONSE_GEMINI_SCHEMA,
+    const systemInstruction = buildSystemInstruction({
+      tz,
+      nowIso,
+      weekDates,
+      items,
     });
 
-    const repaired = repairAiResponse(raw);
-    const parsed = aiResponseSchema.safeParse(repaired);
-    if (!parsed.success) {
+    let generated = await generateAndParseAiResponse({
+      systemInstruction,
+      contents: text,
+    });
+
+    let usedModelRetry = false;
+
+    if (!generated.ok) {
+      // One repair attempt with the parse error fed back to the model.
+      usedModelRetry = true;
+      try {
+        generated = await generateAndParseAiResponse({
+          systemInstruction,
+          contents: buildRetryPrompt(
+            text,
+            generated.repaired ?? generated.raw,
+            `Response failed validation: ${JSON.stringify(generated.parseError)}`
+          ),
+        });
+      } catch {
+        // Fall through to clarification from the first parse failure.
+      }
+    }
+
+    if (!generated.ok) {
       return NextResponse.json({
         ok: true,
         clarification:
           "I understood the idea but the change came through incomplete — try once more, or be a bit more specific (e.g. “make assembly start at 12:00 every week”).",
         prompt: text,
-        model: raw,
-        repaired,
-        parseError: parsed.error.issues.slice(0, 5),
+        model: generated.raw,
+        repaired: generated.repaired,
+        parseError: generated.parseError,
       });
     }
 
-    const result = await applyAiResponse(userId, parsed.data, applyCtx);
+    const model = generated.data;
+    let result = await applyAiResponse(userId, model, applyCtx);
+
+    // Apply rejected the ops — one Gemini retry with the error + prior JSON
+    // (skipped if we already used the single repair slot on a parse failure).
+    if (!result.ok && result.error && !usedModelRetry) {
+      try {
+        const retry = await generateAndParseAiResponse({
+          systemInstruction,
+          contents: buildRetryPrompt(text, model, result.error),
+        });
+        if (retry.ok) {
+          const retried = await applyAiResponse(userId, retry.data, applyCtx);
+          return NextResponse.json(
+            {
+              ...retried,
+              prompt: text,
+              model: retry.data,
+              priorError: result.error,
+              retried: true,
+            },
+            { status: retried.ok ? 200 : 422 }
+          );
+        }
+      } catch {
+        // Keep the original apply failure for the client.
+      }
+    }
+
     return NextResponse.json(
       {
         ...result,
         prompt: text,
-        model: parsed.data,
+        model,
       },
       { status: result.ok ? 200 : 422 }
     );

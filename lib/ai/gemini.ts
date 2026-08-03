@@ -2,14 +2,14 @@ import { GoogleGenAI } from "@google/genai";
 import type { ContentListUnion, Schema } from "@google/genai";
 
 /**
- * Gemini client — uses gemini-2.5-flash for calendar ops.
+ * Gemini client — uses gemini-3.5-flash for calendar ops.
  * Thinking is disabled (budget 0): dynamic thinking made simple creates take
- * 20–70s and hit our timeout. Structured JSON is still Zod-validated before DB writes.
+ * too long and hit our timeout. Structured JSON is still Zod-validated before DB writes.
  */
 
-export const AI_MODEL = "gemini-2.5-flash";
+export const AI_MODEL = "gemini-3.5-flash";
 /** Hard cap so a stuck Gemini call can't hang the command bar forever. */
-export const GEMINI_TIMEOUT_MS = 45_000;
+export const GEMINI_TIMEOUT_MS = 10_000;
 
 export function geminiConfigured(): boolean {
   return Boolean(process.env.GEMINI_API_KEY);
@@ -62,7 +62,7 @@ export async function generateJson(opts: {
         responseMimeType: "application/json",
         responseSchema: opts.responseSchema,
         temperature: 0.2,
-        // 2.5 Flash thinks by default; that made simple prompts hang for ~1 min.
+        // Flash thinks by default; keep it off so calendar ops stay under the timeout.
         thinkingConfig: { thinkingBudget: 0 },
       },
     }),

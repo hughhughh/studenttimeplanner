@@ -18,6 +18,8 @@ type FollowUp = {
   question: string;
 };
 
+const DEMO_ERROR_MESSAGE = "Feature not available on demo mode";
+
 type AiLogEntry = {
   id: string;
   at: string;
@@ -30,8 +32,8 @@ interface Props {
   weekContext: { weekDates: string[]; tz: string; nowIso: string };
 }
 
-/** Client abort slightly after the server Gemini cap so the UI never spins forever. */
-const AI_FETCH_TIMEOUT_MS = 50_000;
+/** Client abort slightly after two Gemini caps (initial + one repair) + apply. */
+const AI_FETCH_TIMEOUT_MS = 25_000;
 const MAX_LOG = 30;
 const MAX_UNDO = 20;
 
@@ -176,20 +178,22 @@ export default function CommandBar({ weekContext }: Props) {
       pushLog(sentText, { ...data, ok: data.ok ?? res.ok });
 
       if (!res.ok || data.ok === false) {
-        if (typeof data.clarification === "string" && data.clarification) {
+        const clarification =
+          typeof data.clarification === "string" && data.clarification
+            ? data.clarification
+            : null;
+        if (clarification) {
           setFollowUp({
             originalPrompt: activeFollowUp?.originalPrompt ?? value,
             prior: sentText,
-            question: data.clarification,
+            question: clarification,
           });
           setText("");
+          setFeedback(null);
         } else {
           setFeedback({
             kind: "error",
-            text:
-              typeof data.error === "string"
-                ? data.error
-                : "Something went wrong.",
+            text: DEMO_ERROR_MESSAGE,
           });
         }
         return;
@@ -246,7 +250,7 @@ export default function CommandBar({ weekContext }: Props) {
       const message = timedOut
         ? "That took too long — try again in a moment."
         : "Could not reach the planner.";
-      setFeedback({ kind: "error", text: message });
+      setFeedback({ kind: "error", text: DEMO_ERROR_MESSAGE });
       pushLog(sentText, { ok: false, error: message });
     } finally {
       if (id === requestId.current) setPending(false);
