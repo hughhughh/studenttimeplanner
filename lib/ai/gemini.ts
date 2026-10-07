@@ -61,9 +61,6 @@ export async function generateJson(opts: {
         systemInstruction: opts.systemInstruction,
         responseMimeType: "application/json",
         responseSchema: opts.responseSchema,
-        temperature: 0.2,
-        // Flash thinks by default; keep it off so calendar ops stay under the timeout.
-        thinkingConfig: { thinkingBudget: 0 },
       },
     }),
     GEMINI_TIMEOUT_MS
